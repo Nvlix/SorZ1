@@ -1,4 +1,4 @@
--- ⚙️ Forge Automation - Auto Sequence Detector with Mobile GUI
+-- ⚙️ Forge Automation - Auto Sequence Detector
 local library = loadstring(game:GetObjects("rbxassetid://7657867786")[1].Source)()
 local Wait = library.subs.Wait
 
@@ -9,11 +9,11 @@ game:GetService("Players").LocalPlayer.Idled:Connect(function()
     VirtualUser:ClickButton2(Vector2.new())
 end)
 
--- 🔰 Create GUI using existing template
+-- 🔰 Window utama
 local ForgeAutomation = library:CreateWindow({
-    Name = "Forge Automation",
+    Name = "Forge Sequence Automation",
     Themeable = {
-        Info = "Auto Sequence Forge System\nPress RightShift to toggle GUI"
+        Info = "Auto Detect & Execute Forge Sequences\nPress RightShift to toggle"
     }
 })
 
@@ -22,120 +22,6 @@ local autoForgeEnabled = false
 local forgeThread = nil
 local currentSequence = "Idle"
 local isProcessing = false
-
--- 🔰 Mobile GUI Variables
-local mobileToggleEnabled = true
-local mobileToggleButton = nil
-local guiVisible = true
-local isMobile = false
-
--- 🔰 Check if running on mobile
-local function checkIfMobile()
-    local UIS = game:GetService("UserInputService")
-    return UIS.TouchEnabled
-end
-
--- 🔰 Create Mobile Toggle Button
-local function createMobileToggleButton()
-    -- Cek apakah sudah ada button
-    if mobileToggleButton then
-        mobileToggleButton.Parent:Destroy()
-    end
-    
-    -- Buat ScreenGui
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "ForgeAutoMobileGUI"
-    screenGui.Parent = game:GetService("CoreGui")
-    screenGui.ResetOnSpawn = false
-    
-    -- Buat toggle button
-    mobileToggleButton = Instance.new("TextButton")
-    mobileToggleButton.Name = "MobileToggle"
-    mobileToggleButton.Text = "⚙️\nFORGE\nAUTO"
-    mobileToggleButton.Font = Enum.Font.GothamBold
-    mobileToggleButton.TextSize = 14
-    mobileToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    mobileToggleButton.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-    mobileToggleButton.BorderSizePixel = 0
-    mobileToggleButton.Size = UDim2.new(0, 70, 0, 70)
-    mobileToggleButton.Position = UDim2.new(0.85, 0, 0.15, 0)
-    mobileToggleButton.Parent = screenGui
-    
-    -- Style button
-    mobileToggleButton.AutoButtonColor = true
-    
-    -- Rounded corners
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0.2, 0)
-    corner.Parent = mobileToggleButton
-    
-    -- Shadow effect
-    local shadow = Instance.new("UIStroke")
-    shadow.Color = Color3.fromRGB(100, 100, 150)
-    shadow.Thickness = 2
-    shadow.Parent = mobileToggleButton
-    
-    -- Toggle function
-    mobileToggleButton.MouseButton1Click:Connect(function()
-        guiVisible = not guiVisible
-        
-        if guiVisible then
-            ForgeAutomation:Show()
-            mobileToggleButton.Text = "⚙️\nHIDE\nGUI"
-            mobileToggleButton.BackgroundColor3 = Color3.fromRGB(40, 100, 200)
-        else
-            ForgeAutomation:Hide()
-            mobileToggleButton.Text = "⚙️\nSHOW\nGUI"
-            mobileToggleButton.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-        end
-    end)
-    
-    -- Make draggable
-    local dragging = false
-    local dragStart, startPos
-    
-    mobileToggleButton.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = mobileToggleButton.Position
-        end
-    end)
-    
-    mobileToggleButton.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
-        end
-    end)
-    
-    game:GetService("UserInputService").InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            local delta = input.Position - dragStart
-            mobileToggleButton.Position = UDim2.new(
-                startPos.X.Scale, 
-                startPos.X.Offset + delta.X,
-                startPos.Y.Scale, 
-                startPos.Y.Offset + delta.Y
-            )
-        end
-    end)
-    
-    print("✅ Mobile toggle button created")
-end
-
--- 🔰 Toggle Mobile Button
-local function toggleMobileButton(enable)
-    mobileToggleEnabled = enable
-    
-    if enable then
-        createMobileToggleButton()
-    else
-        if mobileToggleButton then
-            mobileToggleButton.Parent:Destroy()
-            mobileToggleButton = nil
-        end
-    end
-end
 
 -- 🔰 Services
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -175,7 +61,7 @@ local sequencePatterns = {
     }
 }
 
--- 🔰 Hook untuk mendeteksi sequence
+-- 🔰 Hook untuk mendeteksi sequence yang dipanggil
 local originalFireServer
 local sequenceHistory = {}
 local lastSequenceTime = 0
@@ -194,24 +80,29 @@ local function setupHook()
         local args = {...}
         local result = originalFireServer(self, ...)
         
+        -- Deteksi sequence yang dipanggil
         if #args >= 1 then
             local sequenceName = args[1]
             
+            -- Simpan ke history
             table.insert(sequenceHistory, {
                 Sequence = sequenceName,
                 Time = tick(),
                 Args = args
             })
             
+            -- Keep only last 10 entries
             if #sequenceHistory > 10 then
                 table.remove(sequenceHistory, 1)
             end
             
+            -- Update current sequence
             currentSequence = sequenceName
             lastSequenceTime = tick()
             
+            -- Print debug info
             if autoForgeEnabled then
-                print("📡 Detected sequence:", sequenceName)
+                print("📡 Detected sequence:", sequenceName, "at", tick())
             end
         end
         
@@ -228,14 +119,16 @@ local function executeNextSequence(currentSeq)
         Melt = "Pour",
         Pour = "Hammer",
         Hammer = "Water",
-        Water = "Melt"
+        Water = "Melt"  -- Loop back to start
     }
     
     local nextSeq = nextSequenceMap[currentSeq]
     if not nextSeq then
+        print("❌ Unknown sequence:", currentSeq)
         return false
     end
     
+    -- Buat args berdasarkan sequence
     local args
     if nextSeq == "Melt" then
         args = {
@@ -255,6 +148,7 @@ local function executeNextSequence(currentSeq)
         }
     end
     
+    -- Execute sequence
     local success, err = pcall(function()
         getForgeRF():InvokeServer(unpack(args))
     end)
@@ -265,7 +159,7 @@ local function executeNextSequence(currentSeq)
         lastSequenceTime = tick()
         return true
     else
-        print("❌ Failed:", nextSeq, ":", err)
+        print("❌ Failed to execute", nextSeq, ":", err)
         return false
     end
 end
@@ -276,35 +170,50 @@ local function startAutoForgeLoop()
     autoForgeEnabled = true
     
     print("🚀 Starting Auto Forge Sequence")
+    print("📡 Waiting for first Melt sequence...")
     
     forgeThread = task.spawn(function()
         while autoForgeEnabled do
+            -- Tunggu deteksi sequence Melt
             if currentSequence ~= "Melt" then
                 task.wait(0.5)
                 goto continue
             end
             
-            if tick() - lastSequenceTime < 2 then
+            -- Jika baru detect Melt, tunggu sebentar lalu execute next sequences
+            if tick() - lastSequenceTime < 2 then  -- Sequence baru terdeteksi
                 isProcessing = true
                 
+                -- Urutan sequence setelah Melt
                 local sequenceOrder = {"Pour", "Hammer", "Water"}
-                local delays = {2, 3, 2}
                 
-                for i, seq in ipairs(sequenceOrder) do
+                for _, seq in ipairs(sequenceOrder) do
                     if not autoForgeEnabled then break end
                     
-                    task.wait(delays[i])
+                    -- Tunggu delay antar sequence
+                    local delay = seq == "Pour" and 2 or  -- Tunggu 2 detik setelah Melt
+                                 seq == "Hammer" and 3 or -- Tunggu 3 detik setelah Pour
+                                 seq == "Water" and 2     -- Tunggu 2 detik setelah Hammer
                     
+                    print("⏳ Waiting", delay, "seconds before", seq)
+                    for i = 1, delay do
+                        if not autoForgeEnabled then break end
+                        task.wait(1)
+                    end
+                    
+                    -- Execute sequence
                     if autoForgeEnabled then
                         executeNextSequence(currentSequence)
                     end
                 end
                 
+                -- Setelah selesai, reset untuk loop berikutnya
                 isProcessing = false
                 currentSequence = "Idle"
                 
+                -- Tunggu sebelum loop lagi
                 if autoForgeEnabled then
-                    print("🔄 Cycle completed")
+                    print("🔄 Cycle completed. Waiting for next Melt...")
                 end
             end
             
@@ -312,6 +221,12 @@ local function startAutoForgeLoop()
             task.wait(0.1)
         end
     end)
+    
+    library:Notify({
+        Title = "Forge Automation",
+        Content = "Auto Sequence started!\nStart forging in game",
+        Duration = 5
+    })
 end
 
 local function stopAutoForgeLoop()
@@ -321,21 +236,32 @@ local function stopAutoForgeLoop()
         task.cancel(forgeThread)
     end
     print("🛑 Auto Forge stopped!")
+    library:Notify({
+        Title = "Forge Automation",
+        Content = "Auto Sequence stopped!",
+        Duration = 3
+    })
 end
 
 -- 🔰 Manual execute sequences
 local function executeAllSequences()
     if autoForgeEnabled then
         print("❌ Stop auto forge first!")
+        library:Notify({
+            Title = "Forge Automation",
+            Content = "Please stop auto forge first!",
+            Duration = 3
+        })
         return
     end
     
     print("🔨 Executing all sequences manually...")
     
+    local sequences = {"Melt", "Pour", "Hammer", "Water"}
+    local delays = {2, 3, 2, 0}  -- Delays between sequences
+    
     task.spawn(function()
-        local sequences = {"Melt", "Pour", "Hammer", "Water"}
-        
-        for _, seq in ipairs(sequences) do
+        for i, seq in ipairs(sequences) do
             local args
             if seq == "Melt" then
                 args = {
@@ -355,16 +281,29 @@ local function executeAllSequences()
                 }
             end
             
-            pcall(function()
+            local success, err = pcall(function()
                 getForgeRF():InvokeServer(unpack(args))
             end)
             
-            if seq ~= "Water" then
-                task.wait(2)
+            if success then
+                print("✅ Executed:", seq)
+            else
+                print("❌ Failed to execute", seq, ":", err)
+                break
+            end
+            
+            -- Tunggu delay kecuali sequence terakhir
+            if i < #sequences then
+                task.wait(delays[i])
             end
         end
         
         print("✅ All sequences executed!")
+        library:Notify({
+            Title = "Forge Automation",
+            Content = "All sequences executed!",
+            Duration = 3
+        })
     end)
 end
 
@@ -380,7 +319,7 @@ local ControlSection = MainTab:CreateSection({
 ControlSection:AddToggle({
     Name = "Enable Auto Sequence",
     Value = false,
-    Flag = "AutoForge_Enabled",
+    Flag = "AutoSequence_Enabled",
     Callback = function(value)
         if value then
             startAutoForgeLoop()
@@ -392,11 +331,13 @@ ControlSection:AddToggle({
 
 ControlSection:AddButton({
     Name = "Execute All Sequences Now",
-    Callback = executeAllSequences
+    Callback = function()
+        executeAllSequences()
+    end
 })
 
 ControlSection:AddLabel({
-    Text = "Status: Stopped",
+    Text = "Status: Idle",
     Flag = "Status_Label"
 })
 
@@ -405,10 +346,35 @@ ControlSection:AddLabel({
     Flag = "Sequence_Label"
 })
 
--- 🔰 Settings Section
-local SettingsSection = MainTab:CreateSection({
-    Name = "Settings",
-    Side = "Right"
+ControlSection:AddDivider()
+
+ControlSection:AddLabel({
+    Text = "Instructions:",
+    Flag = "Instructions_Title"
+})
+
+ControlSection:AddLabel({
+    Text = "1. Start forge in game normally",
+    Flag = "Step1"
+})
+
+ControlSection:AddLabel({
+    Text = "2. Script will detect first Melt",
+    Flag = "Step2"
+})
+
+ControlSection:AddLabel({
+    Text = "3. Then auto execute sequences",
+    Flag = "Step3"
+})
+
+-- 🔰 Settings Tab
+local SettingsTab = ForgeAutomation:CreateTab({
+    Name = "Settings"
+})
+
+local SettingsSection = SettingsTab:CreateSection({
+    Name = "Sequence Settings"
 })
 
 SettingsSection:AddSlider({
@@ -444,101 +410,78 @@ SettingsSection:AddSlider({
     end
 })
 
--- 🔰 Mobile Section
-local MobileSection = MainTab:CreateSection({
-    Name = "Mobile Controls"
+-- 🔰 Debug Tab
+local DebugTab = ForgeAutomation:CreateTab({
+    Name = "Debug"
 })
 
-MobileSection:AddToggle({
-    Name = "Mobile Toggle Button",
+local DebugSection = DebugTab:CreateSection({
+    Name = "Debug Tools"
+})
+
+DebugSection:AddButton({
+    Name = "Test Connection",
+    Callback = function()
+        local rf = getForgeRF()
+        if rf then
+            print("✅ Forge RF found:", rf:GetFullName())
+            library:Notify({
+                Title = "Connection Test",
+                Content = "Forge service connected!",
+                Duration = 3
+            })
+        else
+            print("❌ Forge RF not found")
+        end
+    end
+})
+
+DebugSection:AddToggle({
+    Name = "Show Sequence Logs",
     Value = true,
-    Flag = "Mobile_Toggle",
+    Flag = "ShowLogs",
     Callback = function(value)
-        toggleMobileButton(value)
+        print("📊 Sequence logs:", value and "Enabled" or "Disabled")
     end
 })
 
-MobileSection:AddButton({
-    Name = "Hide GUI",
+DebugSection:AddButton({
+    Name = "Clear History",
     Callback = function()
-        ForgeAutomation:Hide()
-        guiVisible = false
-        if mobileToggleButton then
-            mobileToggleButton.Text = "⚙️\nSHOW\nGUI"
-            mobileToggleButton.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-        end
+        sequenceHistory = {}
+        print("🧹 Sequence history cleared")
     end
 })
 
-MobileSection:AddButton({
-    Name = "Show GUI",
-    Callback = function()
-        ForgeAutomation:Show()
-        guiVisible = true
-        if mobileToggleButton then
-            mobileToggleButton.Text = "⚙️\nHIDE\nGUI"
-            mobileToggleButton.BackgroundColor3 = Color3.fromRGB(40, 100, 200)
-        end
-    end
-})
-
--- 🔰 Status Tab
-local StatusTab = ForgeAutomation:CreateTab({
-    Name = "Status"
-})
-
-local StatusSection = StatusTab:CreateSection({
-    Name = "Current Status"
-})
-
-StatusSection:AddLabel({
-    Text = "Auto Forge: Stopped",
-    Flag = "Status_AutoForge"
-})
-
-StatusSection:AddLabel({
-    Text = "Processing: No",
-    Flag = "Status_Processing"
-})
-
-StatusSection:AddLabel({
-    Text = "Last Sequence: None",
-    Flag = "Status_LastSequence"
-})
-
-StatusSection:AddLabel({
-    Text = "Sequence Count: 0",
-    Flag = "Status_SequenceCount"
+DebugSection:AddLabel({
+    Text = "Last 5 Sequences:",
+    Flag = "History_Label"
 })
 
 -- 🔰 Update GUI function
 local function updateGUI()
     local statusText = autoForgeEnabled and "Running" or "Stopped"
-    local processingText = isProcessing and "Yes" or "No"
-    local lastSeq = #sequenceHistory > 0 and sequenceHistory[#sequenceHistory].Sequence or "None"
+    local sequenceText = currentSequence
     
     if ForgeAutomation.Flags.Status_Label then
         ForgeAutomation.Flags.Status_Label = "Status: " .. statusText
     end
     
     if ForgeAutomation.Flags.Sequence_Label then
-        ForgeAutomation.Flags.Sequence_Label = "Current Sequence: " .. currentSequence
+        ForgeAutomation.Flags.Sequence_Label = "Current Sequence: " .. sequenceText
     end
     
-    if ForgeAutomation.Flags.Status_AutoForge then
-        ForgeAutomation.Flags.Status_AutoForge = "Auto Forge: " .. statusText
-    end
-    
-    if ForgeAutomation.Flags.Status_Processing then
-        ForgeAutomation.Flags.Status_Processing = "Processing: " .. processingText
-    end
-    
-    if ForgeAutomation.Flags.Status_LastSequence then
-        ForgeAutomation.Flags.Status_LastSequence = "Last Sequence: " .. lastSeq
-    end
-    
-    if ForgeAutomation.Flags.Status_SequenceCount then
-        ForgeAutomation.Flags.Status_SequenceCount = "Sequence Count: " .. #sequenceHistory
+    -- Update history display
+    if ForgeAutomation.Flags.History_Label then
+        local historyText = "Last Sequences:\n"
+        for i = math.max(1, #sequenceHistory - 4), #sequenceHistory do
+            local entry = sequenceHistory[i]
+            if entry then
+                local timeAgo = math.floor(tick() - entry.Time)
+                historyText = historyText .. string.format("%s (%ds ago)\n", entry.Sequence, timeAgo)
+            end
+        end
+        ForgeAutomation.Flags.History_Label = historyText
     end
 end
 
@@ -550,47 +493,52 @@ task.spawn(function()
     end
 end)
 
--- 🔰 Initialize
+-- 🔰 Initialize hook
 task.spawn(function()
     task.wait(2)
     print("🔧 Setting up sequence detector...")
-    setupHook()
+    local hooked = setupHook()
     
-    isMobile = checkIfMobile()
-    if isMobile and mobileToggleEnabled then
-        createMobileToggleButton()
-        ForgeAutomation:Hide()
-        guiVisible = false
-        print("📱 Mobile mode activated")
+    if hooked then
+        print("✅ Ready! Start forging in game")
+        library:Notify({
+            Title = "Forge Automation",
+            Content = "Sequence detector ready!\nStart forging normally",
+            Duration = 5
+        })
+    else
+        print("❌ Failed to setup hook")
+        library:Notify({
+            Title = "Error",
+            Content = "Failed to setup sequence detector",
+            Duration = 5
+        })
     end
-    
-    print("✅ Forge Automation Ready!")
 end)
 
--- 🔰 Set keybind untuk PC
+-- 🔰 Set keybind
 library:SetKeybind("RightShift")
 
 -- 🔰 Print info
 print("====================================")
 print("🔨 FORGE SEQUENCE AUTOMATION")
 print("====================================")
-print("📡 Script Features:")
-print("1. Auto detect Melt sequence")
+print("📡 This script will:")
+print("1. Detect when you start forging (Melt)")
 print("2. Auto execute Pour, Hammer, Water")
-print("3. Mobile floating button")
-print("4. Real-time status updates")
+print("3. Wait for next Melt cycle")
 print("====================================")
-print("📱 Mobile: Floating toggle button")
-print("💻 PC: Press RightShift for GUI")
+print("🔧 Press RightShift for GUI")
+print("👉 Start forging normally in game")
 print("====================================")
 
 -- 🔰 Designer
 ForgeAutomation:CreateDesigner({
     Info = {
-        "Forge Sequence Automation",
-        "Auto detects and completes sequences",
-        "Mobile friendly with floating button",
-        "Start forging normally in game"
+        "Auto Sequence Forge System",
+        "Detects first Melt sequence",
+        "Then auto completes the cycle",
+        "No manual sequence clicking needed"
     },
     Credit = true
 })
@@ -599,9 +547,6 @@ ForgeAutomation:CreateDesigner({
 game:GetService("Players").LocalPlayer.CharacterRemoving:Connect(function()
     if autoForgeEnabled then
         stopAutoForgeLoop()
-    end
-    if mobileToggleButton then
-        mobileToggleButton.Parent:Destroy()
     end
     print("🧹 Script cleaned up")
 end)
