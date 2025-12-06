@@ -1,0 +1,492 @@
+-- ⚙️ Forge Automation Script dengan Custom GUI
+local library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Quenty/NevermoreEngine/version2/Modules/Shared/Events/Signal.lua"))()
+local Signal = library
+
+local http = game:GetService("HttpService")
+local rs = game:GetService("RunService")
+local uis = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+
+-- 🔰 Custom GUI Library (dari kode yang Anda berikan)
+local guiLibrary = {}
+
+function guiLibrary:tween(...) 
+    TweenService:Create(...):Play() 
+end
+
+function guiLibrary:create(Object, Properties, Parent)
+    local Obj = Instance.new(Object)
+    for i,v in pairs(Properties) do
+        Obj[i] = v
+    end
+    if Parent ~= nil then
+        Obj.Parent = Parent
+    end
+    return Obj
+end
+
+local text_service = game:GetService("TextService")
+function guiLibrary:get_text_size(...)
+    return text_service:GetTextSize(...)
+end
+
+function guiLibrary:set_draggable(gui)
+    local UserInputService = game:GetService("UserInputService")
+    local dragging
+    local dragInput
+    local dragStart
+    local startPos
+
+    local function update(input)
+        local delta = input.Position - dragStart
+        gui.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+
+    gui.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = gui.Position
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    gui.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            update(input)
+        end
+    end)
+end
+
+-- 🔰 Inisialisasi GUI
+local menu = guiLibrary:new("Forge Automation", "forge_configs")
+local LocalPlayer = Players.LocalPlayer
+local mouse = LocalPlayer:GetMouse()
+
+-- 🔰 Variabel untuk sistem forge
+local forgeActive = false
+local autoForgeEnabled = false
+local forgeThread = nil
+local selectedOres = {"Iron", "Copper"}
+local selectedItemType = "Sword"
+local forgeDelay = 60
+local consecutiveFailures = 0
+local maxFailures = 3
+
+-- 🔰 Services Knit
+local ForgeController
+local ForgeService
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- 🔰 Tunggu Knit services
+local function waitForKnitServices()
+    local startTime = tick()
+    while tick() - startTime < 30 do
+        local success, result = pcall(function()
+            local Knit = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Packages").Knit)
+            if Knit.IsReady then
+                ForgeController = Knit.GetController("ForgeController")
+                ForgeService = Knit.GetService("ForgeService")
+                return ForgeController ~= nil and ForgeService ~= nil
+            end
+            return false
+        end)
+        
+        if success and result then
+            return true
+        end
+        task.wait(1)
+    end
+    return false
+end
+
+-- 🔰 Fungsi untuk mendapatkan ores yang tersedia
+local function getAvailableOres()
+    return {"Iron", "Copper", "Silver", "Gold", "Bronze", "Steel", "Mithril", "Adamantite"}
+end
+
+-- 🔰 Fungsi untuk memulai forge process
+local function startForgeProcess()
+    if not ForgeController then
+        local servicesReady = waitForKnitServices()
+        if not servicesReady then
+            print("❌ Forge services not available!")
+            return false
+        end
+    end
+
+    -- Cari forge station
+    local forgeStation
+    local possibleLocations = {
+        workspace:FindFirstChild("Proximity") and workspace.Proximity:FindFirstChild("Forge"),
+        workspace:FindFirstChild("Forge"),
+        workspace:FindFirstChild("Blacksmith"),
+        workspace:FindFirstChild("Workshop")
+    }
+    
+    for _, location in ipairs(possibleLocations) do
+        if location then
+            forgeStation = location
+            break
+        end
+    end
+    
+    if not forgeStation then
+        print("❌ Forge station not found!")
+        return false
+    end
+
+    -- Pastikan player character ada
+    local character = LocalPlayer.Character
+    if not character then
+        print("❌ Player character not found!")
+        return false
+    end
+    
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    if not humanoidRootPart then
+        print("❌ HumanoidRootPart not found!")
+        return false
+    end
+
+    -- Teleport ke forge station
+    humanoidRootPart.CFrame = forgeStation.CFrame + Vector3.new(0, 0, -5)
+    task.wait(1)
+
+    -- Cari dan aktifkan proximity prompt
+    local prompt = forgeStation:FindFirstChildOfClass("ProximityPrompt")
+    if prompt then
+        prompt.Enabled = true
+        task.wait(0.5)
+        fireproximityprompt(prompt)
+        print("✅ Activated forge station")
+        task.wait(2)
+        return true
+    else
+        print("❌ No ProximityPrompt found on forge station!")
+        return false
+    end
+end
+
+-- 🔰 Fungsi untuk forging sequence dengan error handling
+local function executeForgingSequence()
+    local success, errorMsg = pcall(function()
+        -- Start forge process
+        if not startForgeProcess() then
+            return false, "Failed to start forge process"
+        end
+
+        -- Tunggu ForgeController aktif
+        local startTime = tick()
+        while tick() - startTime < 10 do
+            if ForgeController and ForgeController.ForgeActive then
+                break
+            end
+            task.wait(0.5)
+        end
+
+        if not ForgeController.ForgeActive then
+            return false, "ForgeController not active"
+        end
+
+        -- Set data forging
+        ForgeController.Ores = selectedOres
+        ForgeController.ItemType = selectedItemType
+
+        -- Execute sequences
+        local sequences = {"OreSelect", "Melt", "Pour", "Hammer", "Water", "Showcase"}
+        
+        for _, sequence in ipairs(sequences) do
+            if not autoForgeEnabled then break end
+            
+            print("🎯 Starting sequence: " .. sequence)
+            
+            local seqSuccess, seqError = pcall(function()
+                ForgeController:ChangeSequence(sequence)
+            end)
+            
+            if not seqSuccess then
+                print("⚠️ Error in sequence " .. sequence .. ": " .. tostring(seqError))
+            end
+            
+            -- Tunggu antara sequences
+            local waitTime = sequence == "Melt" and 10 or 
+                            sequence == "Hammer" and 8 or 
+                            sequence == "Water" and 5 or 3
+                            
+            for i = 1, waitTime do
+                if not autoForgeEnabled then break end
+                task.wait(1)
+            end
+        end
+
+        return true, "Forging completed successfully"
+    end)
+
+    if not success then
+        return false, "Forging error: " .. tostring(errorMsg)
+    end
+    
+    return success, errorMsg
+end
+
+-- 🔰 Auto Forge Loop
+local function startAutoForgeLoop()
+    if autoForgeEnabled then return end
+    autoForgeEnabled = true
+    consecutiveFailures = 0
+    
+    forgeThread = task.spawn(function()
+        while autoForgeEnabled do
+            local success, message = executeForgingSequence()
+            
+            if success then
+                consecutiveFailures = 0
+                print("✅ " .. message .. ", waiting " .. forgeDelay .. " seconds...")
+                
+                -- Tunggu untuk next cycle
+                for i = forgeDelay, 1, -1 do
+                    if not autoForgeEnabled then break end
+                    task.wait(1)
+                end
+            else
+                consecutiveFailures = consecutiveFailures + 1
+                print("❌ Forging failed: " .. tostring(message))
+                
+                if consecutiveFailures >= maxFailures then
+                    print("❌ Too many failures! Auto Forge stopped.")
+                    stopAutoForgeLoop()
+                    break
+                end
+                
+                -- Tunggu sebelum retry
+                local retryDelay = math.min(10 * consecutiveFailures, 30)
+                print("⏳ Retrying in " .. retryDelay .. " seconds...")
+                task.wait(retryDelay)
+            end
+        end
+    end)
+    
+    print("🚀 Auto Forge started!")
+end
+
+local function stopAutoForgeLoop()
+    autoForgeEnabled = false
+    consecutiveFailures = 0
+    if forgeThread then
+        task.cancel(forgeThread)
+    end
+    print("🛑 Auto Forge stopped!")
+end
+
+-- 🔰 Manual Forge
+local function executeManualForge()
+    if autoForgeEnabled then
+        print("⚠️ Please stop auto forge first!")
+        return
+    end
+    
+    task.spawn(function()
+        local success, message = executeForgingSequence()
+        if success then
+            print("✅ Manual forging completed!")
+        else
+            print("❌ Manual forging failed: " .. tostring(message))
+        end
+    end)
+end
+
+-- 🔰 Buat tabs di GUI
+local mainTab = menu.new_tab("http://www.roblox.com/asset/?id=6031280882") -- Icon gear
+
+-- 🔰 Main Section
+local mainSection = mainTab.new_section("Main Controls")
+
+-- Toggle Auto Forge
+mainSection.new_sector("Auto Forge", "Left").element("Toggle", "Enable Auto Forge", {
+    default = {Toggle = false}
+}, function(value)
+    if value.Toggle then
+        startAutoForgeLoop()
+    else
+        stopAutoForgeLoop()
+    end
+end, "AutoForgeToggle")
+
+-- Manual Forge Button
+mainSection.new_sector("Manual Control", "Left").element("Button", "Manual Forge Now", {}, function()
+    executeManualForge()
+end)
+
+-- 🔰 Ore Selection Section
+local oreSection = mainTab.new_section("Ore Selection")
+
+-- Combo untuk select ores
+oreSection.new_sector("Select Ores", "Left").element("Combo", "Ores Selection", {
+    options = getAvailableOres(),
+    default = {Combo = {"Iron", "Copper"}}
+}, function(value)
+    selectedOres = value.Combo
+    print("✅ Selected ores: " .. table.concat(selectedOres, ", "))
+end, "OreSelection")
+
+-- 🔰 Item Type Section
+local itemSection = mainTab.new_section("Item Type")
+
+-- Dropdown untuk item type
+itemSection.new_sector("Item Type", "Left").element("Dropdown", "Item Type", {
+    options = {"Sword", "Axe", "Dagger", "Hammer", "Armor", "Shield", "Spear", "Bow"},
+    default = {Dropdown = "Sword"}
+}, function(value)
+    selectedItemType = value.Dropdown
+    print("✅ Selected item type: " .. selectedItemType)
+end, "ItemType")
+
+-- 🔰 Settings Section
+local settingsSection = mainTab.new_section("Settings")
+
+-- Slider untuk forge delay
+settingsSection.new_sector("Forge Delay", "Right").element("Slider", "Delay (seconds)", {
+    default = {Slider = 60, min = 30, max = 300}
+}, function(value)
+    forgeDelay = value.Slider
+    print("✅ Forge delay set to: " .. forgeDelay .. " seconds")
+end, "ForgeDelay")
+
+-- Slider untuk max failures
+settingsSection.new_sector("Failure Settings", "Right").element("Slider", "Max Failures", {
+    default = {Slider = 3, min = 1, max = 10}
+}, function(value)
+    maxFailures = value.Slider
+    print("✅ Max failures set to: " .. maxFailures)
+end, "MaxFailures")
+
+-- 🔰 Status Tab
+local statusTab = menu.new_tab("http://www.roblox.com/asset/?id=6034509993") -- Icon info
+
+local statusSection = statusTab.new_section("System Status")
+
+-- Status indicators
+statusSection.new_sector("Current Status", "Left").element("TextBox", "Auto Forge", {
+    default = {Text = "Stopped"}
+}, function() end, "StatusAutoForge")
+
+statusSection.new_sector("Selected Ores", "Left").element("TextBox", "Ores", {
+    default = {Text = "Iron, Copper"}
+}, function() end, "StatusOres")
+
+statusSection.new_sector("Item Type", "Left").element("TextBox", "Item", {
+    default = {Text = "Sword"}
+}, function() end, "StatusItem")
+
+statusSection.new_sector("Failures", "Left").element("TextBox", "Consecutive Failures", {
+    default = {Text = "0"}
+}, function() end, "StatusFailures")
+
+-- 🔰 Update status function
+local function updateStatus()
+    local autoForgeStatus = autoForgeEnabled and "Running" or "Stopped"
+    local oresText = #selectedOres > 0 and table.concat(selectedOres, ", ") or "None"
+    
+    -- Update status textboxes
+    local statusValues = menu.values
+    if statusValues[1] and statusValues[1]["System Status"] and statusValues[1]["System Status"]["Current Status"] then
+        statusValues[1]["System Status"]["Current Status"]["StatusAutoForge"] = {Text = autoForgeStatus}
+    end
+    if statusValues[1] and statusValues[1]["System Status"] and statusValues[1]["System Status"]["Selected Ores"] then
+        statusValues[1]["System Status"]["Selected Ores"]["StatusOres"] = {Text = oresText}
+    end
+    if statusValues[1] and statusValues[1]["System Status"] and statusValues[1]["System Status"]["Item Type"] then
+        statusValues[1]["System Status"]["Item Type"]["StatusItem"] = {Text = selectedItemType}
+    end
+    if statusValues[1] and statusValues[1]["System Status"] and statusValues[1]["System Status"]["Failures"] then
+        statusValues[1]["System Status"]["Failures"]["StatusFailures"] = {Text = tostring(consecutiveFailures)}
+    end
+end
+
+-- 🔰 Auto update status
+task.spawn(function()
+    while true do
+        updateStatus()
+        task.wait(1)
+    end
+end)
+
+-- 🔰 Refresh button
+statusSection.new_sector("Actions", "Right").element("Button", "Refresh Status", {}, function()
+    updateStatus()
+    print("✅ Status refreshed!")
+end)
+
+-- 🔰 Config Tab
+local configTab = menu.new_tab("http://www.roblox.com/asset/?id=6031280882") -- Icon settings
+
+local configSection = configTab.new_section("Configuration")
+
+-- Save config button
+configSection.new_sector("Save/Load", "Left").element("Button", "Save Config", {}, function()
+    menu.save_cfg("forge_config")
+    print("✅ Config saved!")
+end)
+
+-- Load config button
+configSection.new_sector("Save/Load", "Left").element("Button", "Load Config", {}, function()
+    menu.load_cfg("forge_config")
+    print("✅ Config loaded!")
+    updateStatus()
+end)
+
+-- Reset button
+configSection.new_sector("Reset", "Right").element("Button", "Reset Selection", {}, function()
+    selectedOres = {"Iron", "Copper"}
+    selectedItemType = "Sword"
+    forgeDelay = 60
+    print("✅ Selection reset to defaults!")
+    updateStatus()
+end)
+
+-- 🔰 Anti-AFK system
+local VirtualUser = game:GetService("VirtualUser")
+game:GetService("Players").LocalPlayer.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+end)
+
+-- 🔰 Auto-initialize services
+task.spawn(function()
+    print("🔄 Waiting for forge services...")
+    local servicesReady = waitForKnitServices()
+    if servicesReady then
+        print("✅ Forge services initialized successfully!")
+    else
+        print("❌ Failed to initialize forge services!")
+    end
+end)
+
+-- 🔰 Print welcome message
+print("====================================")
+print("🔨 Forge Automation System Loaded!")
+print("🔧 Press INSERT to open/close GUI")
+print("🎯 Auto-initializing forge services...")
+print("====================================")
+
+-- 🔰 Auto update ore list based on inventory
+task.spawn(function()
+    while true do
+        -- Di sini Anda bisa menambahkan kode untuk mendapatkan ores dari inventory
+        -- Ini adalah placeholder
+        task.wait(10)
+    end
+end)
