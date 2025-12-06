@@ -1,4 +1,4 @@
--- ⚙️ Forge Automation Script - Auto Run tanpa pemilihan ore
+-- ⚙️ Forge Automation - Auto Sequence Detector
 local library = loadstring(game:GetObjects("rbxassetid://7657867786")[1].Source)()
 local Wait = library.subs.Wait
 
@@ -9,167 +9,158 @@ game:GetService("Players").LocalPlayer.Idled:Connect(function()
     VirtualUser:ClickButton2(Vector2.new())
 end)
 
--- 🔰 Buat Window utama
+-- 🔰 Window utama
 local ForgeAutomation = library:CreateWindow({
-    Name = "Forge Automation",
+    Name = "Forge Sequence Automation",
     Themeable = {
-        Info = "Auto Forge System - No Ore Selection\nPress RightShift to toggle"
+        Info = "Auto Detect & Execute Forge Sequences\nPress RightShift to toggle"
     }
 })
 
--- 🔰 Variabel untuk sistem forge
+-- 🔰 Variables
 local autoForgeEnabled = false
 local forgeThread = nil
-local forgeDelay = 60
-local consecutiveFailures = 0
-local maxFailures = 3
-local statusText = "Stopped"
-local isForgeActive = false
+local currentSequence = "Idle"
+local isProcessing = false
 
 -- 🔰 Services
-local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
--- 🔰 Services Knit
-local ForgeController
-local ForgeService
-
--- 🔰 Tunggu Knit services
-local function waitForKnitServices()
-    local startTime = tick()
-    while tick() - startTime < 30 do
-        local success, result = pcall(function()
-            local Knit = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Packages").Knit)
-            if Knit.IsReady then
-                ForgeController = Knit.GetController("ForgeController")
-                ForgeService = Knit.GetService("ForgeService")
-                return ForgeController ~= nil and ForgeService ~= nil
-            end
-            return false
-        end)
-        
-        if success and result then
-            return true
-        end
-        task.wait(1)
+-- 🔰 Remote Function
+local ForgeRF
+local function getForgeRF()
+    if not ForgeRF then
+        ForgeRF = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Packages")
+            :WaitForChild("Knit"):WaitForChild("Services"):WaitForChild("ForgeService")
+            :WaitForChild("RF"):WaitForChild("ChangeSequence")
     end
-    return false
+    return ForgeRF
 end
 
--- 🔰 Fungsi untuk check apakah forge sedang aktif
-local function checkForgeActive()
-    if not ForgeController then return false end
-    return ForgeController.ForgeActive == true
-end
+-- 🔰 Sequence detector
+local sequencePatterns = {
+    Melt = {
+        SequenceName = "Melt",
+        FastForge = false,
+        ItemType = "",
+        Ores = {}
+    },
+    Pour = {
+        SequenceName = "Pour",
+        ClientTime = tick()
+    },
+    Hammer = {
+        SequenceName = "Hammer",
+        ClientTime = tick()
+    },
+    Water = {
+        SequenceName = "Water",
+        ClientTime = tick()
+    }
+}
 
--- 🔰 Fungsi untuk tunggu sampai ore dipilih (forge aktif)
-local function waitForOreSelection()
-    local startTime = tick()
-    local timeout = 120 -- 2 menit timeout
+-- 🔰 Hook untuk mendeteksi sequence yang dipanggil
+local originalFireServer
+local sequenceHistory = {}
+local lastSequenceTime = 0
+
+local function setupHook()
+    local forgeRF = getForgeRF()
     
-    print("⏳ Waiting for ore selection in game...")
-    
-    while tick() - startTime < timeout do
-        if not autoForgeEnabled then
-            print("❌ Auto forge disabled while waiting")
-            return false
-        end
-        
-        if checkForgeActive() then
-            print("✅ Ore selection detected! Forge is active.")
-            return true
-        end
-        
-        task.wait(1)
-        
-        -- Update status setiap 10 detik
-        if math.floor(tick() - startTime) % 10 == 0 then
-            local elapsed = math.floor(tick() - startTime)
-            print("⏳ Still waiting... (" .. elapsed .. "s elapsed)")
-        end
+    if not forgeRF then
+        print("❌ Cannot find ForgeService RF")
+        return false
     end
     
-    print("❌ Timeout waiting for ore selection")
-    return false
+    originalFireServer = originalFireServer or forgeRF.InvokeServer
+    
+    forgeRF.InvokeServer = function(self, ...)
+        local args = {...}
+        local result = originalFireServer(self, ...)
+        
+        -- Deteksi sequence yang dipanggil
+        if #args >= 1 then
+            local sequenceName = args[1]
+            
+            -- Simpan ke history
+            table.insert(sequenceHistory, {
+                Sequence = sequenceName,
+                Time = tick(),
+                Args = args
+            })
+            
+            -- Keep only last 10 entries
+            if #sequenceHistory > 10 then
+                table.remove(sequenceHistory, 1)
+            end
+            
+            -- Update current sequence
+            currentSequence = sequenceName
+            lastSequenceTime = tick()
+            
+            -- Print debug info
+            if autoForgeEnabled then
+                print("📡 Detected sequence:", sequenceName, "at", tick())
+            end
+        end
+        
+        return result
+    end
+    
+    print("✅ Hook setup successful")
+    return true
 end
 
--- 🔰 Fungsi untuk execute forging sequence
-local function executeForgingSequence()
-    local success, errorMsg = pcall(function()
-        -- Tunggu sampai forge aktif (ore sudah dipilih)
-        if not checkForgeActive() then
-            return false, "Forge is not active. Please select ores in game first."
-        end
-
-        print("🎯 Starting forge sequences...")
-        
-        -- Execute sequences yang tersisa
-        local sequences = {"Melt", "Pour", "Hammer", "Water", "Showcase"}
-        
-        for _, sequence in ipairs(sequences) do
-            if not autoForgeEnabled then break end
-            
-            print("🎯 Starting sequence: " .. sequence)
-            
-            local seqSuccess, seqError = pcall(function()
-                ForgeController:ChangeSequence(sequence)
-            end)
-            
-            if not seqSuccess then
-                print("⚠️ Error in sequence " .. sequence .. ": " .. tostring(seqError))
-            end
-            
-            -- Tunggu antara sequences
-            local waitTime = sequence == "Melt" and 10 or 
-                            sequence == "Hammer" and 8 or 
-                            sequence == "Water" and 5 or 3
-                            
-            for i = 1, waitTime do
-                if not autoForgeEnabled then break end
-                task.wait(1)
-            end
-        end
-
-        return true, "Forging completed successfully"
+-- 🔰 Execute next sequence
+local function executeNextSequence(currentSeq)
+    local nextSequenceMap = {
+        Melt = "Pour",
+        Pour = "Hammer",
+        Hammer = "Water",
+        Water = "Melt"  -- Loop back to start
+    }
+    
+    local nextSeq = nextSequenceMap[currentSeq]
+    if not nextSeq then
+        print("❌ Unknown sequence:", currentSeq)
+        return false
+    end
+    
+    -- Buat args berdasarkan sequence
+    local args
+    if nextSeq == "Melt" then
+        args = {
+            "Melt",
+            {
+                FastForge = false,
+                ItemType = "",
+                Ores = {}
+            }
+        }
+    else
+        args = {
+            nextSeq,
+            {
+                ClientTime = tick()
+            }
+        }
+    end
+    
+    -- Execute sequence
+    local success, err = pcall(function()
+        getForgeRF():InvokeServer(unpack(args))
     end)
-
-    if not success then
-        return false, "Forging error: " .. tostring(errorMsg)
-    end
-    
-    return success, errorMsg
-end
-
--- 🔰 Fungsi untuk satu siklus forge lengkap
-local function runForgeCycle()
-    -- 1. Tunggu sampai ore dipilih di game
-    local oreSelected = waitForOreSelection()
-    if not oreSelected then
-        return false, "Failed to detect ore selection"
-    end
-    
-    -- 2. Jalankan forging sequence
-    local success, message = executeForgingSequence()
     
     if success then
-        print("✅ " .. message)
-        
-        -- 3. Tunggu forge selesai dan kembali ke awal
-        local waitStart = tick()
-        while tick() - waitStart < 5 do
-            if not autoForgeEnabled then break end
-            if not checkForgeActive() then
-                print("✅ Forge cycle completed, ready for next cycle")
-                break
-            end
-            task.wait(1)
-        end
-        
-        return true, "Forge cycle completed"
+        print("✅ Executed:", nextSeq)
+        currentSequence = nextSeq
+        lastSequenceTime = tick()
+        return true
     else
-        return false, message
+        print("❌ Failed to execute", nextSeq, ":", err)
+        return false
     end
 end
 
@@ -177,107 +168,148 @@ end
 local function startAutoForgeLoop()
     if autoForgeEnabled then return end
     autoForgeEnabled = true
-    consecutiveFailures = 0
-    statusText = "Running"
+    
+    print("🚀 Starting Auto Forge Sequence")
+    print("📡 Waiting for first Melt sequence...")
     
     forgeThread = task.spawn(function()
-        print("🚀 Auto Forge started - Waiting for ore selection in game...")
-        
         while autoForgeEnabled do
-            local success, message = runForgeCycle()
-            
-            if success then
-                consecutiveFailures = 0
-                print("✅ " .. message .. ", waiting " .. forgeDelay .. " seconds for next cycle...")
-                
-                -- Tunggu untuk next cycle
-                for i = forgeDelay, 1, -1 do
-                    if not autoForgeEnabled then break end
-                    task.wait(1)
-                end
-            else
-                consecutiveFailures = consecutiveFailures + 1
-                print("❌ Forge cycle failed: " .. tostring(message))
-                
-                if consecutiveFailures >= maxFailures then
-                    print("❌ Too many failures! Auto Forge stopped.")
-                    stopAutoForgeLoop()
-                    break
-                end
-                
-                -- Tunggu sebelum retry
-                local retryDelay = math.min(10 * consecutiveFailures, 30)
-                print("⏳ Retrying in " .. retryDelay .. " seconds...")
-                task.wait(retryDelay)
+            -- Tunggu deteksi sequence Melt
+            if currentSequence ~= "Melt" then
+                task.wait(0.5)
+                goto continue
             end
+            
+            -- Jika baru detect Melt, tunggu sebentar lalu execute next sequences
+            if tick() - lastSequenceTime < 2 then  -- Sequence baru terdeteksi
+                isProcessing = true
+                
+                -- Urutan sequence setelah Melt
+                local sequenceOrder = {"Pour", "Hammer", "Water"}
+                
+                for _, seq in ipairs(sequenceOrder) do
+                    if not autoForgeEnabled then break end
+                    
+                    -- Tunggu delay antar sequence
+                    local delay = seq == "Pour" and 2 or  -- Tunggu 2 detik setelah Melt
+                                 seq == "Hammer" and 3 or -- Tunggu 3 detik setelah Pour
+                                 seq == "Water" and 2     -- Tunggu 2 detik setelah Hammer
+                    
+                    print("⏳ Waiting", delay, "seconds before", seq)
+                    for i = 1, delay do
+                        if not autoForgeEnabled then break end
+                        task.wait(1)
+                    end
+                    
+                    -- Execute sequence
+                    if autoForgeEnabled then
+                        executeNextSequence(currentSequence)
+                    end
+                end
+                
+                -- Setelah selesai, reset untuk loop berikutnya
+                isProcessing = false
+                currentSequence = "Idle"
+                
+                -- Tunggu sebelum loop lagi
+                if autoForgeEnabled then
+                    print("🔄 Cycle completed. Waiting for next Melt...")
+                end
+            end
+            
+            ::continue::
+            task.wait(0.1)
         end
     end)
     
     library:Notify({
         Title = "Forge Automation",
-        Content = "Auto Forge started!\nPlease select ores in game",
+        Content = "Auto Sequence started!\nStart forging in game",
         Duration = 5
     })
 end
 
 local function stopAutoForgeLoop()
     autoForgeEnabled = false
-    consecutiveFailures = 0
-    statusText = "Stopped"
+    isProcessing = false
     if forgeThread then
         task.cancel(forgeThread)
     end
     print("🛑 Auto Forge stopped!")
     library:Notify({
         Title = "Forge Automation",
-        Content = "Auto Forge stopped!",
+        Content = "Auto Sequence stopped!",
         Duration = 3
     })
 end
 
--- 🔰 Manual trigger forging (setelah ore dipilih)
-local function triggerForgeNow()
+-- 🔰 Manual execute sequences
+local function executeAllSequences()
     if autoForgeEnabled then
-        library:Notify({
-            Title = "Forge Automation",
-            Content = "Please stop auto forge first!",
-            Duration = 3
-        })
+        print("❌ Stop auto forge first!")
         return
     end
     
+    print("🔨 Executing all sequences manually...")
+    
+    local sequences = {"Melt", "Pour", "Hammer", "Water"}
+    local delays = {2, 3, 2, 0}  -- Delays between sequences
+    
     task.spawn(function()
-        local success, message = executeForgingSequence()
-        if success then
-            library:Notify({
-                Title = "Forge Automation",
-                Content = "Forging completed!",
-                Duration = 3
-            })
-        else
-            library:Notify({
-                Title = "Forge Automation",
-                Content = "Forging failed: " .. tostring(message),
-                Duration = 5
-            })
+        for i, seq in ipairs(sequences) do
+            local args
+            if seq == "Melt" then
+                args = {
+                    "Melt",
+                    {
+                        FastForge = false,
+                        ItemType = "",
+                        Ores = {}
+                    }
+                }
+            else
+                args = {
+                    seq,
+                    {
+                        ClientTime = tick()
+                    }
+                }
+            end
+            
+            local success, err = pcall(function()
+                getForgeRF():InvokeServer(unpack(args))
+            end)
+            
+            if success then
+                print("✅ Executed:", seq)
+            else
+                print("❌ Failed to execute", seq, ":", err)
+                break
+            end
+            
+            -- Tunggu delay kecuali sequence terakhir
+            if i < #sequences then
+                task.wait(delays[i])
+            end
         end
+        
+        print("✅ All sequences executed!")
     end)
 end
 
--- 🔰 Buat Tab General
-local GeneralTab = ForgeAutomation:CreateTab({
-    Name = "Main"
+-- 🔰 Setup GUI
+local MainTab = ForgeAutomation:CreateTab({
+    Name = "Main Controls"
 })
 
--- 🔰 Auto Forge Section
-local AutoForgeSection = GeneralTab:CreateSection({
-    Name = "Auto Forge"
+local ControlSection = MainTab:CreateSection({
+    Name = "Sequence Control"
 })
 
-AutoForgeSection:AddToggle({
-    Name = "Enable Auto Forge",
+ControlSection:AddToggle({
+    Name = "Enable Auto Sequence",
     Value = false,
-    Flag = "AutoForge_Enabled",
+    Flag = "AutoSequence_Enabled",
     Callback = function(value)
         if value then
             startAutoForgeLoop()
@@ -287,107 +319,85 @@ AutoForgeSection:AddToggle({
     end
 })
 
-AutoForgeSection:AddButton({
-    Name = "Trigger Forge Now",
+ControlSection:AddButton({
+    Name = "Execute All Sequences Now",
     Callback = function()
-        triggerForgeNow()
+        executeAllSequences()
     end
 })
 
-AutoForgeSection:AddLabel({
-    Text = "Status: Stopped",
-    Flag = "AutoForge_Status"
+ControlSection:AddLabel({
+    Text = "Status: Idle",
+    Flag = "Status_Label"
 })
 
-AutoForgeSection:AddLabel({
-    Text = "Note: Select ores in game first",
-    Flag = "AutoForge_Note"
+ControlSection:AddLabel({
+    Text = "Current Sequence: None",
+    Flag = "Sequence_Label"
 })
 
--- 🔰 Settings Section
-local SettingsSection = GeneralTab:CreateSection({
-    Name = "Settings",
-    Side = "Right"
+ControlSection:AddDivider()
+
+ControlSection:AddLabel({
+    Text = "Instructions:",
+    Flag = "Instructions_Title"
+})
+
+ControlSection:AddLabel({
+    Text = "1. Start forge in game normally",
+    Flag = "Step1"
+})
+
+ControlSection:AddLabel({
+    Text = "2. Script will detect first Melt",
+    Flag = "Step2"
+})
+
+ControlSection:AddLabel({
+    Text = "3. Then auto execute sequences",
+    Flag = "Step3"
+})
+
+-- 🔰 Settings Tab
+local SettingsTab = ForgeAutomation:CreateTab({
+    Name = "Settings"
+})
+
+local SettingsSection = SettingsTab:CreateSection({
+    Name = "Sequence Settings"
 })
 
 SettingsSection:AddSlider({
-    Name = "Cycle Delay",
-    Flag = "AutoForge_Delay",
-    Value = 60,
-    Precise = 0,
-    Min = 30,
-    Max = 300,
+    Name = "Melt to Pour Delay",
+    Flag = "Delay1",
+    Value = 2,
+    Min = 1,
+    Max = 5,
     Format = function(Value)
-        return "Delay: " .. tostring(Value) .. "s"
-    end,
-    Callback = function(value)
-        forgeDelay = value
-        print("✅ Cycle delay set to: " .. forgeDelay .. " seconds")
+        return tostring(Value) .. " seconds"
     end
 })
 
 SettingsSection:AddSlider({
-    Name = "Max Failures",
-    Flag = "AutoForge_MaxFailures",
+    Name = "Pour to Hammer Delay",
+    Flag = "Delay2",
     Value = 3,
     Min = 1,
-    Max = 10,
+    Max = 5,
     Format = function(Value)
-        return "Max Failures: " .. tostring(Value)
-    end,
-    Callback = function(value)
-        maxFailures = value
-        print("✅ Max failures set to: " .. maxFailures)
+        return tostring(Value) .. " seconds"
     end
 })
 
--- 🔰 Status Tab
-local StatusTab = ForgeAutomation:CreateTab({
-    Name = "Status"
-})
-
-local StatusSection = StatusTab:CreateSection({
-    Name = "Current Status"
-})
-
-StatusSection:AddLabel({
-    Text = "Auto Forge: Stopped",
-    Flag = "Status_AutoForge"
-})
-
-StatusSection:AddLabel({
-    Text = "Consecutive Failures: 0",
-    Flag = "Status_Failures"
-})
-
-StatusSection:AddLabel({
-    Text = "Forge Active: No",
-    Flag = "Status_ForgeActive"
-})
-
-StatusSection:AddLabel({
-    Text = "Cycle Delay: 60s",
-    Flag = "Status_Delay"
-})
-
-StatusSection:AddLabel({
-    Text = "Instructions:",
-    Flag = "Status_Instructions"
-})
-
-StatusSection:AddLabel({
-    Text = "1. Go to forge station",
-    Flag = "Status_Step1"
-})
-
-StatusSection:AddLabel({
-    Text = "2. Select ores in game",
-    Flag = "Status_Step2"
-})
-
-StatusSection:AddLabel({
-    Text = "3. Enable Auto Forge",
-    Flag = "Status_Step3"
+SettingsSection:AddSlider({
+    Name = "Hammer to Water Delay",
+    Flag = "Delay3",
+    Value = 2,
+    Min = 1,
+    Max = 5,
+    Format = function(Value)
+        return tostring(Value) .. " seconds"
+    end
 })
 
 -- 🔰 Debug Tab
@@ -400,170 +410,133 @@ local DebugSection = DebugTab:CreateSection({
 })
 
 DebugSection:AddButton({
-    Name = "Check Forge Status",
+    Name = "Test Connection",
     Callback = function()
-        local isActive = checkForgeActive()
-        local message = isActive and "Forge is ACTIVE (Ores selected)" or "Forge is INACTIVE (Select ores)"
-        
-        library:Notify({
-            Title = "Forge Status",
-            Content = message,
-            Duration = 3
-        })
-        print("🔍 " .. message)
-    end
-})
-
-DebugSection:AddButton({
-    Name = "Test Services",
-    Callback = function()
-        local servicesReady = waitForKnitServices()
-        if servicesReady then
+        local rf = getForgeRF()
+        if rf then
+            print("✅ Forge RF found:", rf:GetFullName())
             library:Notify({
-                Title = "Services",
-                Content = "Forge services: READY",
+                Title = "Connection Test",
+                Content = "Forge service connected!",
                 Duration = 3
             })
-            print("✅ Forge services: READY")
         else
-            library:Notify({
-                Title = "Services",
-                Content = "Forge services: NOT FOUND",
-                Duration = 3
-            })
-            print("❌ Forge services: NOT FOUND")
+            print("❌ Forge RF not found")
         end
     end
 })
 
 DebugSection:AddToggle({
-    Name = "Verbose Logging",
-    Value = false,
-    Flag = "Debug_Verbose",
+    Name = "Show Sequence Logs",
+    Value = true,
+    Flag = "ShowLogs",
     Callback = function(value)
-        if value then
-            print("🔧 Verbose logging enabled")
-        else
-            print("🔧 Verbose logging disabled")
-        end
+        print("📊 Sequence logs:", value and "Enabled" or "Disabled")
     end
 })
 
--- 🔰 Update status function
-local function updateStatus()
-    local autoForgeStatus = autoForgeEnabled and "Running" or "Stopped"
-    local forgeActiveStatus = checkForgeActive() and "Yes" or "No"
+DebugSection:AddButton({
+    Name = "Clear History",
+    Callback = function()
+        sequenceHistory = {}
+        print("🧹 Sequence history cleared")
+    end
+})
+
+DebugSection:AddLabel({
+    Text = "Last 5 Sequences:",
+    Flag = "History_Label"
+})
+
+-- 🔰 Update GUI function
+local function updateGUI()
+    local statusText = autoForgeEnabled and "Running" or "Stopped"
+    local sequenceText = currentSequence
     
-    -- Update status labels
-    if ForgeAutomation.Flags.AutoForge_Status then
-        ForgeAutomation.Flags.AutoForge_Status = "Status: " .. autoForgeStatus
+    if ForgeAutomation.Flags.Status_Label then
+        ForgeAutomation.Flags.Status_Label = "Status: " .. statusText
     end
     
-    if ForgeAutomation.Flags.Status_AutoForge then
-        ForgeAutomation.Flags.Status_AutoForge = "Auto Forge: " .. autoForgeStatus
+    if ForgeAutomation.Flags.Sequence_Label then
+        ForgeAutomation.Flags.Sequence_Label = "Current Sequence: " .. sequenceText
     end
     
-    if ForgeAutomation.Flags.Status_Failures then
-        ForgeAutomation.Flags.Status_Failures = "Consecutive Failures: " .. tostring(consecutiveFailures)
-    end
-    
-    if ForgeAutomation.Flags.Status_ForgeActive then
-        ForgeAutomation.Flags.Status_ForgeActive = "Forge Active: " .. forgeActiveStatus
-    end
-    
-    if ForgeAutomation.Flags.Status_Delay then
-        ForgeAutomation.Flags.Status_Delay = "Cycle Delay: " .. tostring(forgeDelay) .. "s"
-    end
-    
-    -- Update instructions based on status
-    if ForgeAutomation.Flags.AutoForge_Note then
-        if autoForgeEnabled then
-            ForgeAutomation.Flags.AutoForge_Note = "Note: Auto forge running, select ores in game"
-        else
-            ForgeAutomation.Flags.AutoForge_Note = "Note: Enable auto forge after selecting ores"
+    -- Update history display
+    if ForgeAutomation.Flags.History_Label then
+        local historyText = "Last Sequences:\n"
+        for i = math.max(1, #sequenceHistory - 4), #sequenceHistory do
+            local entry = sequenceHistory[i]
+            if entry then
+                local timeAgo = math.floor(tick() - entry.Time)
+                historyText = historyText .. string.format("%s (%ds ago)\n", entry.Sequence, timeAgo)
+            end
         end
+        ForgeAutomation.Flags.History_Label = historyText
     end
 end
 
--- 🔰 Auto update status
+-- 🔰 Auto update GUI
 task.spawn(function()
     while Wait() do
-        updateStatus()
-        Wait(1)
+        updateGUI()
+        Wait(0.5)
     end
 end)
 
--- 🔰 Auto-initialize services
+-- 🔰 Initialize hook
 task.spawn(function()
-    print("🔄 Initializing forge automation...")
-    local servicesReady = waitForKnitServices()
-    if servicesReady then
-        print("✅ Forge services initialized successfully!")
-        
-        -- Set initial status
-        updateStatus()
-        
+    task.wait(2)
+    print("🔧 Setting up sequence detector...")
+    local hooked = setupHook()
+    
+    if hooked then
+        print("✅ Ready! Start forging in game")
         library:Notify({
             Title = "Forge Automation",
-            Content = "Ready! Select ores in game, then enable Auto Forge",
+            Content = "Sequence detector ready!\nStart forging normally",
             Duration = 5
         })
     else
-        print("❌ Failed to initialize forge services!")
-        
+        print("❌ Failed to setup hook")
         library:Notify({
-            Title = "Forge Automation",
-            Content = "Error: Forge services not found",
+            Title = "Error",
+            Content = "Failed to setup sequence detector",
             Duration = 5
         })
     end
 end)
 
--- 🔰 Set keybind untuk toggle GUI
+-- 🔰 Set keybind
 library:SetKeybind("RightShift")
 
--- 🔰 Print welcome message
+-- 🔰 Print info
 print("====================================")
-print("🔨 Forge Automation - No Ore Selection")
-print("🔧 Press RightShift to open/close GUI")
-print("📋 Instructions:")
-print("1. Go to forge station in game")
-print("2. Select ores manually")
-print("3. Enable Auto Forge in GUI")
+print("🔨 FORGE SEQUENCE AUTOMATION")
+print("====================================")
+print("📡 This script will:")
+print("1. Detect when you start forging (Melt)")
+print("2. Auto execute Pour, Hammer, Water")
+print("3. Wait for next Melt cycle")
+print("====================================")
+print("🔧 Press RightShift for GUI")
+print("👉 Start forging normally in game")
 print("====================================")
 
--- 🔰 Designer untuk customisasi GUI
+-- 🔰 Designer
 ForgeAutomation:CreateDesigner({
     Info = {
-        "Forge Automation System",
-        "No Ore Selection Required",
-        "Select ores in game first",
-        "Then enable Auto Forge"
+        "Auto Sequence Forge System",
+        "Detects first Melt sequence",
+        "Then auto completes the cycle",
+        "No manual sequence clicking needed"
     },
     Credit = true
 })
 
 -- 🔰 Cleanup
-library.signals:connection(game:GetService("Players").LocalPlayer.CharacterRemoving, function()
+game:GetService("Players").LocalPlayer.CharacterRemoving:Connect(function()
     if autoForgeEnabled then
         stopAutoForgeLoop()
     end
-    print("🧹 Cleaning up forge automation...")
-end)
-
--- 🔰 Auto check forge status periodically
-task.spawn(function()
-    while Wait() do
-        if autoForgeEnabled then
-            local forgeActive = checkForgeActive()
-            if forgeActive and not isForgeActive then
-                print("✅ Forge became active (ores selected)")
-                isForgeActive = true
-            elseif not forgeActive and isForgeActive then
-                print("ℹ️ Forge completed or reset")
-                isForgeActive = false
-            end
-        end
-        Wait(2)
-    end
+    print("🧹 Script cleaned up")
 end)
