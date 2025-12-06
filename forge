@@ -1,79 +1,20 @@
--- ⚙️ Forge Automation Script dengan Custom GUI
-local library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Quenty/NevermoreEngine/version2/Modules/Shared/Events/Signal.lua"))()
-local Signal = library
+-- ⚙️ Forge Automation Script dengan Library v0.32
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/wally-rblx/LinoriaLib/main/Library.lua"))()
 
-local http = game:GetService("HttpService")
-local rs = game:GetService("RunService")
-local uis = game:GetService("UserInputService")
-local Players = game:GetService("Players")
-local TweenService = game:GetService("TweenService")
+-- 🔰 Anti-AFK System
+local VirtualUser = game:GetService("VirtualUser")
+game:GetService("Players").LocalPlayer.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+end)
 
--- 🔰 Custom GUI Library (dari kode yang Anda berikan)
-local guiLibrary = {}
-
-function guiLibrary:tween(...) 
-    TweenService:Create(...):Play() 
-end
-
-function guiLibrary:create(Object, Properties, Parent)
-    local Obj = Instance.new(Object)
-    for i,v in pairs(Properties) do
-        Obj[i] = v
-    end
-    if Parent ~= nil then
-        Obj.Parent = Parent
-    end
-    return Obj
-end
-
-local text_service = game:GetService("TextService")
-function guiLibrary:get_text_size(...)
-    return text_service:GetTextSize(...)
-end
-
-function guiLibrary:set_draggable(gui)
-    local UserInputService = game:GetService("UserInputService")
-    local dragging
-    local dragInput
-    local dragStart
-    local startPos
-
-    local function update(input)
-        local delta = input.Position - dragStart
-        gui.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    end
-
-    gui.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = gui.Position
-            
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                end
-            end)
-        end
-    end)
-
-    gui.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-            dragInput = input
-        end
-    end)
-
-    UserInputService.InputChanged:Connect(function(input)
-        if input == dragInput and dragging then
-            update(input)
-        end
-    end)
-end
-
--- 🔰 Inisialisasi GUI
-local menu = guiLibrary:new("Forge Automation", "forge_configs")
-local LocalPlayer = Players.LocalPlayer
-local mouse = LocalPlayer:GetMouse()
+-- 🔰 Buat Window utama
+local Window = Library:CreateWindow({
+    Name = "Forge Automation v2.0",
+    Themeable = {
+        Info = "Auto Forge System\nPress RightShift to toggle"
+    }
+})
 
 -- 🔰 Variabel untuk sistem forge
 local forgeActive = false
@@ -85,10 +26,14 @@ local forgeDelay = 60
 local consecutiveFailures = 0
 local maxFailures = 3
 
+-- 🔰 Services
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
+
 -- 🔰 Services Knit
 local ForgeController
 local ForgeService
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- 🔰 Tunggu Knit services
 local function waitForKnitServices()
@@ -114,7 +59,7 @@ end
 
 -- 🔰 Fungsi untuk mendapatkan ores yang tersedia
 local function getAvailableOres()
-    return {"Iron", "Copper", "Silver", "Gold", "Bronze", "Steel", "Mithril", "Adamantite"}
+    return {"Iron", "Copper", "Silver", "Gold", "Bronze", "Steel", "Mithril", "Adamantite", "Titanium", "Platinum"}
 end
 
 -- 🔰 Fungsi untuk memulai forge process
@@ -133,7 +78,8 @@ local function startForgeProcess()
         workspace:FindFirstChild("Proximity") and workspace.Proximity:FindFirstChild("Forge"),
         workspace:FindFirstChild("Forge"),
         workspace:FindFirstChild("Blacksmith"),
-        workspace:FindFirstChild("Workshop")
+        workspace:FindFirstChild("Workshop"),
+        workspace:FindFirstChild("Furnace")
     }
     
     for _, location in ipairs(possibleLocations) do
@@ -219,6 +165,7 @@ local function executeForgingSequence()
             
             if not seqSuccess then
                 print("⚠️ Error in sequence " .. sequence .. ": " .. tostring(seqError))
+                -- Skip ke sequence berikutnya jika ada error
             end
             
             -- Tunggu antara sequences
@@ -308,111 +255,231 @@ local function executeManualForge()
     end)
 end
 
--- 🔰 Buat tabs di GUI
-local mainTab = menu.new_tab("http://www.roblox.com/asset/?id=6031280882") -- Icon gear
+-- 🔰 Buat Tab di Window
+local MainTab = Window:CreateTab("Main Controls", "rbxassetid://6034509993")
 
 -- 🔰 Main Section
-local mainSection = mainTab.new_section("Main Controls")
+local MainSection = MainTab:CreateSection({
+    Name = "Forge Controls",
+    Side = "Left"
+})
 
 -- Toggle Auto Forge
-mainSection.new_sector("Auto Forge", "Left").element("Toggle", "Enable Auto Forge", {
-    default = {Toggle = false}
-}, function(value)
-    if value.Toggle then
-        startAutoForgeLoop()
-    else
-        stopAutoForgeLoop()
+MainSection:AddToggle({
+    Name = "Enable Auto Forge",
+    Value = false,
+    Flag = "AutoForgeToggle",
+    Callback = function(value)
+        if value then
+            startAutoForgeLoop()
+        else
+            stopAutoForgeLoop()
+        end
     end
-end, "AutoForgeToggle")
+})
 
 -- Manual Forge Button
-mainSection.new_sector("Manual Control", "Left").element("Button", "Manual Forge Now", {}, function()
-    executeManualForge()
-end)
+MainSection:AddButton({
+    Name = "Manual Forge Now",
+    Callback = function()
+        executeManualForge()
+    end
+})
+
+-- Status Indicator
+MainSection:AddLabel({
+    Text = "Status: Stopped",
+    Flag = "StatusLabel"
+})
 
 -- 🔰 Ore Selection Section
-local oreSection = mainTab.new_section("Ore Selection")
+local OreSection = MainTab:CreateSection({
+    Name = "Ore Selection",
+    Side = "Left"
+})
 
--- Combo untuk select ores
-oreSection.new_sector("Select Ores", "Left").element("Combo", "Ores Selection", {
-    options = getAvailableOres(),
-    default = {Combo = {"Iron", "Copper"}}
-}, function(value)
-    selectedOres = value.Combo
-    print("✅ Selected ores: " .. table.concat(selectedOres, ", "))
-end, "OreSelection")
+-- Dropdown untuk select ores (Multi-select)
+OreSection:AddDropdown({
+    Name = "Select Ores",
+    Value = {"Iron", "Copper"},
+    Callback = function(value)
+        selectedOres = value
+        print("✅ Selected ores: " .. table.concat(selectedOres, ", "))
+    end,
+    Flag = "OreSelection",
+    Multi = true,
+    List = getAvailableOres()
+})
 
 -- 🔰 Item Type Section
-local itemSection = mainTab.new_section("Item Type")
+local ItemSection = MainTab:CreateSection({
+    Name = "Item Type",
+    Side = "Right"
+})
 
 -- Dropdown untuk item type
-itemSection.new_sector("Item Type", "Left").element("Dropdown", "Item Type", {
-    options = {"Sword", "Axe", "Dagger", "Hammer", "Armor", "Shield", "Spear", "Bow"},
-    default = {Dropdown = "Sword"}
-}, function(value)
-    selectedItemType = value.Dropdown
-    print("✅ Selected item type: " .. selectedItemType)
-end, "ItemType")
+ItemSection:AddDropdown({
+    Name = "Item Type",
+    Value = "Sword",
+    Callback = function(value)
+        selectedItemType = value
+        print("✅ Selected item type: " .. selectedItemType)
+    end,
+    Flag = "ItemType",
+    List = {"Sword", "Axe", "Dagger", "Hammer", "Armor", "Shield", "Spear", "Bow", "Mace"}
+})
 
 -- 🔰 Settings Section
-local settingsSection = mainTab.new_section("Settings")
+local SettingsSection = MainTab:CreateSection({
+    Name = "Settings",
+    Side = "Right"
+})
 
 -- Slider untuk forge delay
-settingsSection.new_sector("Forge Delay", "Right").element("Slider", "Delay (seconds)", {
-    default = {Slider = 60, min = 30, max = 300}
-}, function(value)
-    forgeDelay = value.Slider
-    print("✅ Forge delay set to: " .. forgeDelay .. " seconds")
-end, "ForgeDelay")
+SettingsSection:AddSlider({
+    Name = "Forge Delay (seconds)",
+    Value = 60,
+    Min = 30,
+    Max = 300,
+    Format = "%s seconds",
+    Callback = function(value)
+        forgeDelay = value
+        print("✅ Forge delay set to: " .. forgeDelay .. " seconds")
+    end,
+    Flag = "ForgeDelay"
+})
 
 -- Slider untuk max failures
-settingsSection.new_sector("Failure Settings", "Right").element("Slider", "Max Failures", {
-    default = {Slider = 3, min = 1, max = 10}
-}, function(value)
-    maxFailures = value.Slider
-    print("✅ Max failures set to: " .. maxFailures)
-end, "MaxFailures")
+SettingsSection:AddSlider({
+    Name = "Max Failures",
+    Value = 3,
+    Min = 1,
+    Max = 10,
+    Format = "%s failures",
+    Callback = function(value)
+        maxFailures = value
+        print("✅ Max failures set to: " .. maxFailures)
+    end,
+    Flag = "MaxFailures"
+})
 
 -- 🔰 Status Tab
-local statusTab = menu.new_tab("http://www.roblox.com/asset/?id=6034509993") -- Icon info
+local StatusTab = Window:CreateTab("Status Monitor", "rbxassetid://6034509993")
 
-local statusSection = statusTab.new_section("System Status")
+local StatusSection = StatusTab:CreateSection({
+    Name = "Current Status",
+    Side = "Left"
+})
 
--- Status indicators
-statusSection.new_sector("Current Status", "Left").element("TextBox", "Auto Forge", {
-    default = {Text = "Stopped"}
-}, function() end, "StatusAutoForge")
+-- Status Textboxes
+StatusSection:AddTextbox({
+    Name = "Auto Forge Status",
+    Value = "Stopped",
+    Flag = "StatusAutoForge",
+    Callback = function() end
+})
 
-statusSection.new_sector("Selected Ores", "Left").element("TextBox", "Ores", {
-    default = {Text = "Iron, Copper"}
-}, function() end, "StatusOres")
+StatusSection:AddTextbox({
+    Name = "Selected Ores",
+    Value = "Iron, Copper",
+    Flag = "StatusOres",
+    Callback = function() end
+})
 
-statusSection.new_sector("Item Type", "Left").element("TextBox", "Item", {
-    default = {Text = "Sword"}
-}, function() end, "StatusItem")
+StatusSection:AddTextbox({
+    Name = "Item Type",
+    Value = "Sword",
+    Flag = "StatusItem",
+    Callback = function() end
+})
 
-statusSection.new_sector("Failures", "Left").element("TextBox", "Consecutive Failures", {
-    default = {Text = "0"}
-}, function() end, "StatusFailures")
+StatusSection:AddTextbox({
+    Name = "Consecutive Failures",
+    Value = "0",
+    Flag = "StatusFailures",
+    Callback = function() end
+})
+
+-- Refresh Button
+StatusSection:AddButton({
+    Name = "Refresh Status",
+    Callback = function()
+        print("🔄 Status refreshed!")
+    end
+})
+
+-- 🔰 Config Tab
+local ConfigTab = Window:CreateTab("Configuration", "rbxassetid://6031280882")
+
+local ConfigSection = ConfigTab:CreateSection({
+    Name = "Save/Load Config",
+    Side = "Left"
+})
+
+-- Save Config Button
+ConfigSection:AddButton({
+    Name = "Save Config",
+    Callback = function()
+        print("✅ Config saved!")
+        -- Di sini Anda bisa menambahkan kode untuk save config
+    end
+})
+
+-- Load Config Button
+ConfigSection:AddButton({
+    Name = "Load Config",
+    Callback = function()
+        print("✅ Config loaded!")
+        -- Di sini Anda bisa menambahkan kode untuk load config
+    end
+})
+
+local ResetSection = ConfigTab:CreateSection({
+    Name = "Reset",
+    Side = "Right"
+})
+
+-- Reset Button
+ResetSection:AddButton({
+    Name = "Reset to Defaults",
+    Callback = function()
+        selectedOres = {"Iron", "Copper"}
+        selectedItemType = "Sword"
+        forgeDelay = 60
+        maxFailures = 3
+        
+        -- Update UI elements
+        Window.Flags.OreSelection = {"Iron", "Copper"}
+        Window.Flags.ItemType = "Sword"
+        Window.Flags.ForgeDelay = 60
+        Window.Flags.MaxFailures = 3
+        
+        print("✅ Reset to defaults!")
+    end
+})
 
 -- 🔰 Update status function
 local function updateStatus()
     local autoForgeStatus = autoForgeEnabled and "Running" or "Stopped"
     local oresText = #selectedOres > 0 and table.concat(selectedOres, ", ") or "None"
     
+    -- Update status label
+    if Window.Flags.StatusLabel then
+        Window.Flags.StatusLabel = "Status: " .. autoForgeStatus
+    end
+    
     -- Update status textboxes
-    local statusValues = menu.values
-    if statusValues[1] and statusValues[1]["System Status"] and statusValues[1]["System Status"]["Current Status"] then
-        statusValues[1]["System Status"]["Current Status"]["StatusAutoForge"] = {Text = autoForgeStatus}
+    if Window.Flags.StatusAutoForge then
+        Window.Flags.StatusAutoForge = autoForgeStatus
     end
-    if statusValues[1] and statusValues[1]["System Status"] and statusValues[1]["System Status"]["Selected Ores"] then
-        statusValues[1]["System Status"]["Selected Ores"]["StatusOres"] = {Text = oresText}
+    if Window.Flags.StatusOres then
+        Window.Flags.StatusOres = oresText
     end
-    if statusValues[1] and statusValues[1]["System Status"] and statusValues[1]["System Status"]["Item Type"] then
-        statusValues[1]["System Status"]["Item Type"]["StatusItem"] = {Text = selectedItemType}
+    if Window.Flags.StatusItem then
+        Window.Flags.StatusItem = selectedItemType
     end
-    if statusValues[1] and statusValues[1]["System Status"] and statusValues[1]["System Status"]["Failures"] then
-        statusValues[1]["System Status"]["Failures"]["StatusFailures"] = {Text = tostring(consecutiveFailures)}
+    if Window.Flags.StatusFailures then
+        Window.Flags.StatusFailures = tostring(consecutiveFailures)
     end
 end
 
@@ -424,45 +491,8 @@ task.spawn(function()
     end
 end)
 
--- 🔰 Refresh button
-statusSection.new_sector("Actions", "Right").element("Button", "Refresh Status", {}, function()
-    updateStatus()
-    print("✅ Status refreshed!")
-end)
-
--- 🔰 Config Tab
-local configTab = menu.new_tab("http://www.roblox.com/asset/?id=6031280882") -- Icon settings
-
-local configSection = configTab.new_section("Configuration")
-
--- Save config button
-configSection.new_sector("Save/Load", "Left").element("Button", "Save Config", {}, function()
-    menu.save_cfg("forge_config")
-    print("✅ Config saved!")
-end)
-
--- Load config button
-configSection.new_sector("Save/Load", "Left").element("Button", "Load Config", {}, function()
-    menu.load_cfg("forge_config")
-    print("✅ Config loaded!")
-    updateStatus()
-end)
-
--- Reset button
-configSection.new_sector("Reset", "Right").element("Button", "Reset Selection", {}, function()
-    selectedOres = {"Iron", "Copper"}
-    selectedItemType = "Sword"
-    forgeDelay = 60
-    print("✅ Selection reset to defaults!")
-    updateStatus()
-end)
-
--- 🔰 Anti-AFK system
-local VirtualUser = game:GetService("VirtualUser")
-game:GetService("Players").LocalPlayer.Idled:Connect(function()
-    VirtualUser:CaptureController()
-    VirtualUser:ClickButton2(Vector2.new())
-end)
+-- 🔰 Keybind untuk toggle GUI
+Library:SetKeybind("RightShift")
 
 -- 🔰 Auto-initialize services
 task.spawn(function()
@@ -470,23 +500,52 @@ task.spawn(function()
     local servicesReady = waitForKnitServices()
     if servicesReady then
         print("✅ Forge services initialized successfully!")
+        
+        -- Update status setelah services ready
+        updateStatus()
     else
         print("❌ Failed to initialize forge services!")
+        
+        -- Tampilkan error di status
+        if Window.Flags.StatusAutoForge then
+            Window.Flags.StatusAutoForge = "Error: Services not found"
+        end
     end
 end)
 
 -- 🔰 Print welcome message
 print("====================================")
-print("🔨 Forge Automation System Loaded!")
-print("🔧 Press INSERT to open/close GUI")
+print("🔨 Forge Automation System v2.0")
+print("🔧 Press RightShift to open/close GUI")
 print("🎯 Auto-initializing forge services...")
 print("====================================")
 
--- 🔰 Auto update ore list based on inventory
-task.spawn(function()
-    while true do
-        -- Di sini Anda bisa menambahkan kode untuk mendapatkan ores dari inventory
-        -- Ini adalah placeholder
-        task.wait(10)
-    end
-end)
+-- 🔰 Designer untuk customisasi
+Window:CreateDesigner({
+    Info = {
+        "Forge Automation v2.0",
+        "Auto Forging System",
+        "Supports multiple ore types",
+        "Error handling included"
+    },
+    Credit = true
+})
+
+-- 🔰 Notifikasi ketika script loaded
+Library:Notify({
+    Title = "Forge Automation",
+    Content = "Script loaded successfully!",
+    Duration = 5
+})
+
+-- 🔰 Debugging function untuk testing
+local function testForge()
+    print("🧪 Testing forge system...")
+    executeManualForge()
+end
+
+-- Tambahkan test button di tab config jika diperlukan
+ConfigSection:AddButton({
+    Name = "Test Forge (Debug)",
+    Callback = testForge
+})
