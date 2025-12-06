@@ -1,4 +1,4 @@
--- ⚙️ Forge Automation Script dengan Library v0.32
+-- ⚙️ Forge Automation Script - Auto Run tanpa pemilihan ore
 local library = loadstring(game:GetObjects("rbxassetid://7657867786")[1].Source)()
 local Wait = library.subs.Wait
 
@@ -13,24 +13,23 @@ end)
 local ForgeAutomation = library:CreateWindow({
     Name = "Forge Automation",
     Themeable = {
-        Info = "Auto Forge System v2.0\nPress RightShift to toggle"
+        Info = "Auto Forge System - No Ore Selection\nPress RightShift to toggle"
     }
 })
 
 -- 🔰 Variabel untuk sistem forge
-local forgeActive = false
 local autoForgeEnabled = false
 local forgeThread = nil
-local selectedOres = {"Iron", "Copper"}
-local selectedItemType = "Sword"
 local forgeDelay = 60
 local consecutiveFailures = 0
 local maxFailures = 3
 local statusText = "Stopped"
+local isForgeActive = false
 
 -- 🔰 Services
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 
 -- 🔰 Services Knit
@@ -59,102 +58,55 @@ local function waitForKnitServices()
     return false
 end
 
--- 🔰 Fungsi untuk mendapatkan ores yang tersedia
-local function getAvailableOres()
-    return {"Iron", "Copper", "Silver", "Gold", "Bronze", "Steel", "Mithril", "Adamantite", "Titanium", "Platinum"}
+-- 🔰 Fungsi untuk check apakah forge sedang aktif
+local function checkForgeActive()
+    if not ForgeController then return false end
+    return ForgeController.ForgeActive == true
 end
 
--- 🔰 Fungsi untuk memulai forge process
-local function startForgeProcess()
-    if not ForgeController then
-        local servicesReady = waitForKnitServices()
-        if not servicesReady then
-            print("❌ Forge services not available!")
+-- 🔰 Fungsi untuk tunggu sampai ore dipilih (forge aktif)
+local function waitForOreSelection()
+    local startTime = tick()
+    local timeout = 120 -- 2 menit timeout
+    
+    print("⏳ Waiting for ore selection in game...")
+    
+    while tick() - startTime < timeout do
+        if not autoForgeEnabled then
+            print("❌ Auto forge disabled while waiting")
             return false
         end
-    end
-
-    -- Cari forge station
-    local forgeStation
-    local possibleLocations = {
-        workspace:FindFirstChild("Proximity") and workspace.Proximity:FindFirstChild("Forge"),
-        workspace:FindFirstChild("Forge"),
-        workspace:FindFirstChild("Blacksmith"),
-        workspace:FindFirstChild("Workshop"),
-        workspace:FindFirstChild("Furnace")
-    }
-    
-    for _, location in ipairs(possibleLocations) do
-        if location then
-            forgeStation = location
-            break
+        
+        if checkForgeActive() then
+            print("✅ Ore selection detected! Forge is active.")
+            return true
+        end
+        
+        task.wait(1)
+        
+        -- Update status setiap 10 detik
+        if math.floor(tick() - startTime) % 10 == 0 then
+            local elapsed = math.floor(tick() - startTime)
+            print("⏳ Still waiting... (" .. elapsed .. "s elapsed)")
         end
     end
     
-    if not forgeStation then
-        print("❌ Forge station not found!")
-        return false
-    end
-
-    -- Pastikan player character ada
-    local character = LocalPlayer.Character
-    if not character then
-        print("❌ Player character not found!")
-        return false
-    end
-    
-    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-    if not humanoidRootPart then
-        print("❌ HumanoidRootPart not found!")
-        return false
-    end
-
-    -- Teleport ke forge station
-    humanoidRootPart.CFrame = forgeStation.CFrame + Vector3.new(0, 0, -5)
-    task.wait(1)
-
-    -- Cari dan aktifkan proximity prompt
-    local prompt = forgeStation:FindFirstChildOfClass("ProximityPrompt")
-    if prompt then
-        prompt.Enabled = true
-        task.wait(0.5)
-        fireproximityprompt(prompt)
-        print("✅ Activated forge station")
-        task.wait(2)
-        return true
-    else
-        print("❌ No ProximityPrompt found on forge station!")
-        return false
-    end
+    print("❌ Timeout waiting for ore selection")
+    return false
 end
 
--- 🔰 Fungsi untuk forging sequence dengan error handling
+-- 🔰 Fungsi untuk execute forging sequence
 local function executeForgingSequence()
     local success, errorMsg = pcall(function()
-        -- Start forge process
-        if not startForgeProcess() then
-            return false, "Failed to start forge process"
+        -- Tunggu sampai forge aktif (ore sudah dipilih)
+        if not checkForgeActive() then
+            return false, "Forge is not active. Please select ores in game first."
         end
 
-        -- Tunggu ForgeController aktif
-        local startTime = tick()
-        while tick() - startTime < 10 do
-            if ForgeController and ForgeController.ForgeActive then
-                break
-            end
-            task.wait(0.5)
-        end
-
-        if not ForgeController.ForgeActive then
-            return false, "ForgeController not active"
-        end
-
-        -- Set data forging
-        ForgeController.Ores = selectedOres
-        ForgeController.ItemType = selectedItemType
-
-        -- Execute sequences
-        local sequences = {"OreSelect", "Melt", "Pour", "Hammer", "Water", "Showcase"}
+        print("🎯 Starting forge sequences...")
+        
+        -- Execute sequences yang tersisa
+        local sequences = {"Melt", "Pour", "Hammer", "Water", "Showcase"}
         
         for _, sequence in ipairs(sequences) do
             if not autoForgeEnabled then break end
@@ -190,6 +142,37 @@ local function executeForgingSequence()
     return success, errorMsg
 end
 
+-- 🔰 Fungsi untuk satu siklus forge lengkap
+local function runForgeCycle()
+    -- 1. Tunggu sampai ore dipilih di game
+    local oreSelected = waitForOreSelection()
+    if not oreSelected then
+        return false, "Failed to detect ore selection"
+    end
+    
+    -- 2. Jalankan forging sequence
+    local success, message = executeForgingSequence()
+    
+    if success then
+        print("✅ " .. message)
+        
+        -- 3. Tunggu forge selesai dan kembali ke awal
+        local waitStart = tick()
+        while tick() - waitStart < 5 do
+            if not autoForgeEnabled then break end
+            if not checkForgeActive() then
+                print("✅ Forge cycle completed, ready for next cycle")
+                break
+            end
+            task.wait(1)
+        end
+        
+        return true, "Forge cycle completed"
+    else
+        return false, message
+    end
+end
+
 -- 🔰 Auto Forge Loop
 local function startAutoForgeLoop()
     if autoForgeEnabled then return end
@@ -198,12 +181,14 @@ local function startAutoForgeLoop()
     statusText = "Running"
     
     forgeThread = task.spawn(function()
+        print("🚀 Auto Forge started - Waiting for ore selection in game...")
+        
         while autoForgeEnabled do
-            local success, message = executeForgingSequence()
+            local success, message = runForgeCycle()
             
             if success then
                 consecutiveFailures = 0
-                print("✅ " .. message .. ", waiting " .. forgeDelay .. " seconds...")
+                print("✅ " .. message .. ", waiting " .. forgeDelay .. " seconds for next cycle...")
                 
                 -- Tunggu untuk next cycle
                 for i = forgeDelay, 1, -1 do
@@ -212,7 +197,7 @@ local function startAutoForgeLoop()
                 end
             else
                 consecutiveFailures = consecutiveFailures + 1
-                print("❌ Forging failed: " .. tostring(message))
+                print("❌ Forge cycle failed: " .. tostring(message))
                 
                 if consecutiveFailures >= maxFailures then
                     print("❌ Too many failures! Auto Forge stopped.")
@@ -228,11 +213,10 @@ local function startAutoForgeLoop()
         end
     end)
     
-    print("🚀 Auto Forge started!")
     library:Notify({
         Title = "Forge Automation",
-        Content = "Auto Forge started!",
-        Duration = 3
+        Content = "Auto Forge started!\nPlease select ores in game",
+        Duration = 5
     })
 end
 
@@ -251,8 +235,8 @@ local function stopAutoForgeLoop()
     })
 end
 
--- 🔰 Manual Forge
-local function executeManualForge()
+-- 🔰 Manual trigger forging (setelah ore dipilih)
+local function triggerForgeNow()
     if autoForgeEnabled then
         library:Notify({
             Title = "Forge Automation",
@@ -267,13 +251,13 @@ local function executeManualForge()
         if success then
             library:Notify({
                 Title = "Forge Automation",
-                Content = "Manual forging completed!",
+                Content = "Forging completed!",
                 Duration = 3
             })
         else
             library:Notify({
                 Title = "Forge Automation",
-                Content = "Manual forging failed: " .. tostring(message),
+                Content = "Forging failed: " .. tostring(message),
                 Duration = 5
             })
         end
@@ -282,7 +266,7 @@ end
 
 -- 🔰 Buat Tab General
 local GeneralTab = ForgeAutomation:CreateTab({
-    Name = "General"
+    Name = "Main"
 })
 
 -- 🔰 Auto Forge Section
@@ -304,9 +288,9 @@ AutoForgeSection:AddToggle({
 })
 
 AutoForgeSection:AddButton({
-    Name = "Manual Forge Now",
+    Name = "Trigger Forge Now",
     Callback = function()
-        executeManualForge()
+        triggerForgeNow()
     end
 })
 
@@ -315,8 +299,19 @@ AutoForgeSection:AddLabel({
     Flag = "AutoForge_Status"
 })
 
-AutoForgeSection:AddSlider({
-    Name = "Forge Delay",
+AutoForgeSection:AddLabel({
+    Text = "Note: Select ores in game first",
+    Flag = "AutoForge_Note"
+})
+
+-- 🔰 Settings Section
+local SettingsSection = GeneralTab:CreateSection({
+    Name = "Settings",
+    Side = "Right"
+})
+
+SettingsSection:AddSlider({
+    Name = "Cycle Delay",
     Flag = "AutoForge_Delay",
     Value = 60,
     Precise = 0,
@@ -327,11 +322,11 @@ AutoForgeSection:AddSlider({
     end,
     Callback = function(value)
         forgeDelay = value
-        print("✅ Forge delay set to: " .. forgeDelay .. " seconds")
+        print("✅ Cycle delay set to: " .. forgeDelay .. " seconds")
     end
 })
 
-AutoForgeSection:AddSlider({
+SettingsSection:AddSlider({
     Name = "Max Failures",
     Flag = "AutoForge_MaxFailures",
     Value = 3,
@@ -344,71 +339,6 @@ AutoForgeSection:AddSlider({
         maxFailures = value
         print("✅ Max failures set to: " .. maxFailures)
     end
-})
-
--- 🔰 Ore Selection Section
-local OreSection = GeneralTab:CreateSection({
-    Name = "Ore Selection",
-    Side = "Right"
-})
-
--- Simpan referensi ke dropdown untuk update manual
-local oreDropdown
-local oreDropdownFlag = "OreSelection_Ores"
-
--- Fungsi untuk mendapatkan ores dari game (placeholder)
-local function updateOreList()
-    local availableOres = getAvailableOres()
-    
-    -- Update dropdown jika sudah ada
-    if oreDropdown then
-        oreDropdown:UpdateList(availableOres)
-    end
-    
-    return availableOres
-end
-
--- Dropdown untuk select ores
-local oreList = updateOreList()
-oreDropdown = OreSection:AddDropdown({
-    Name = "Select Ores",
-    Value = {"Iron", "Copper"},
-    Callback = function(value)
-        selectedOres = value
-        print("✅ Selected ores: " .. table.concat(selectedOres, ", "))
-    end,
-    Flag = oreDropdownFlag,
-    Multi = true,
-    List = oreList
-})
-
--- Button untuk refresh ore list
-OreSection:AddButton({
-    Name = "Refresh Ore List",
-    Callback = function()
-        updateOreList()
-        library:Notify({
-            Title = "Ore Selection",
-            Content = "Ore list refreshed!",
-            Duration = 3
-        })
-    end
-})
-
--- 🔰 Item Type Section
-local ItemSection = GeneralTab:CreateSection({
-    Name = "Item Type"
-})
-
-ItemSection:AddDropdown({
-    Name = "Item Type",
-    Value = "Sword",
-    Callback = function(value)
-        selectedItemType = value
-        print("✅ Selected item type: " .. selectedItemType)
-    end,
-    Flag = "ItemType_Type",
-    List = {"Sword", "Axe", "Dagger", "Hammer", "Armor", "Shield", "Spear", "Bow", "Mace"}
 })
 
 -- 🔰 Status Tab
@@ -426,106 +356,41 @@ StatusSection:AddLabel({
 })
 
 StatusSection:AddLabel({
-    Text = "Selected Ores: Iron, Copper",
-    Flag = "Status_Ores"
-})
-
-StatusSection:AddLabel({
-    Text = "Item Type: Sword",
-    Flag = "Status_ItemType"
-})
-
-StatusSection:AddLabel({
     Text = "Consecutive Failures: 0",
     Flag = "Status_Failures"
 })
 
 StatusSection:AddLabel({
-    Text = "Forge Delay: 60s",
+    Text = "Forge Active: No",
+    Flag = "Status_ForgeActive"
+})
+
+StatusSection:AddLabel({
+    Text = "Cycle Delay: 60s",
     Flag = "Status_Delay"
 })
 
-StatusSection:AddButton({
-    Name = "Refresh Status",
-    Callback = function()
-        print("🔄 Status refreshed!")
-        library:Notify({
-            Title = "Status",
-            Content = "Status refreshed!",
-            Duration = 2
-        })
-    end
+StatusSection:AddLabel({
+    Text = "Instructions:",
+    Flag = "Status_Instructions"
 })
 
--- 🔰 Settings Tab
-local SettingsTab = ForgeAutomation:CreateTab({
-    Name = "Settings"
+StatusSection:AddLabel({
+    Text = "1. Go to forge station",
+    Flag = "Status_Step1"
 })
 
-local ConfigSection = SettingsTab:CreateSection({
-    Name = "Configuration"
+StatusSection:AddLabel({
+    Text = "2. Select ores in game",
+    Flag = "Status_Step2"
 })
 
-ConfigSection:AddButton({
-    Name = "Save Configuration",
-    Callback = function()
-        library:Notify({
-            Title = "Configuration",
-            Content = "Configuration saved!",
-            Duration = 3
-        })
-        print("✅ Configuration saved!")
-    end
+StatusSection:AddLabel({
+    Text = "3. Enable Auto Forge",
+    Flag = "Status_Step3"
 })
 
-ConfigSection:AddButton({
-    Name = "Load Configuration",
-    Callback = function()
-        library:Notify({
-            Title = "Configuration",
-            Content = "Configuration loaded!",
-            Duration = 3
-        })
-        print("✅ Configuration loaded!")
-    end
-})
-
-local ResetSection = SettingsTab:CreateSection({
-    Name = "Reset",
-    Side = "Right"
-})
-
-ResetSection:AddButton({
-    Name = "Reset to Defaults",
-    Callback = function()
-        -- Reset variables
-        selectedOres = {"Iron", "Copper"}
-        selectedItemType = "Sword"
-        forgeDelay = 60
-        maxFailures = 3
-        
-        -- Reset UI flags
-        ForgeAutomation.Flags.AutoForge_Enabled = false
-        ForgeAutomation.Flags.AutoForge_Delay = 60
-        ForgeAutomation.Flags.AutoForge_MaxFailures = 3
-        ForgeAutomation.Flags[oreDropdownFlag] = {"Iron", "Copper"}
-        ForgeAutomation.Flags.ItemType_Type = "Sword"
-        
-        -- Stop auto forge jika sedang berjalan
-        if autoForgeEnabled then
-            stopAutoForgeLoop()
-        end
-        
-        library:Notify({
-            Title = "Reset",
-            Content = "Reset to defaults successful!",
-            Duration = 3
-        })
-        print("✅ Reset to defaults!")
-    end
-})
-
--- 🔰 Debug Tab (untuk testing)
+-- 🔰 Debug Tab
 local DebugTab = ForgeAutomation:CreateTab({
     Name = "Debug"
 })
@@ -535,27 +400,34 @@ local DebugSection = DebugTab:CreateSection({
 })
 
 DebugSection:AddButton({
-    Name = "Test Forge Sequence",
+    Name = "Check Forge Status",
     Callback = function()
-        print("🧪 Testing forge sequence...")
-        executeManualForge()
+        local isActive = checkForgeActive()
+        local message = isActive and "Forge is ACTIVE (Ores selected)" or "Forge is INACTIVE (Select ores)"
+        
+        library:Notify({
+            Title = "Forge Status",
+            Content = message,
+            Duration = 3
+        })
+        print("🔍 " .. message)
     end
 })
 
 DebugSection:AddButton({
-    Name = "Check Services",
+    Name = "Test Services",
     Callback = function()
         local servicesReady = waitForKnitServices()
         if servicesReady then
             library:Notify({
-                Title = "Debug",
+                Title = "Services",
                 Content = "Forge services: READY",
                 Duration = 3
             })
             print("✅ Forge services: READY")
         else
             library:Notify({
-                Title = "Debug",
+                Title = "Services",
                 Content = "Forge services: NOT FOUND",
                 Duration = 3
             })
@@ -565,14 +437,14 @@ DebugSection:AddButton({
 })
 
 DebugSection:AddToggle({
-    Name = "Debug Mode",
+    Name = "Verbose Logging",
     Value = false,
-    Flag = "Debug_Mode",
+    Flag = "Debug_Verbose",
     Callback = function(value)
         if value then
-            print("🔧 Debug mode enabled")
+            print("🔧 Verbose logging enabled")
         else
-            print("🔧 Debug mode disabled")
+            print("🔧 Verbose logging disabled")
         end
     end
 })
@@ -580,7 +452,7 @@ DebugSection:AddToggle({
 -- 🔰 Update status function
 local function updateStatus()
     local autoForgeStatus = autoForgeEnabled and "Running" or "Stopped"
-    local oresText = #selectedOres > 0 and table.concat(selectedOres, ", ") or "None"
+    local forgeActiveStatus = checkForgeActive() and "Yes" or "No"
     
     -- Update status labels
     if ForgeAutomation.Flags.AutoForge_Status then
@@ -591,20 +463,25 @@ local function updateStatus()
         ForgeAutomation.Flags.Status_AutoForge = "Auto Forge: " .. autoForgeStatus
     end
     
-    if ForgeAutomation.Flags.Status_Ores then
-        ForgeAutomation.Flags.Status_Ores = "Selected Ores: " .. oresText
-    end
-    
-    if ForgeAutomation.Flags.Status_ItemType then
-        ForgeAutomation.Flags.Status_ItemType = "Item Type: " .. selectedItemType
-    end
-    
     if ForgeAutomation.Flags.Status_Failures then
         ForgeAutomation.Flags.Status_Failures = "Consecutive Failures: " .. tostring(consecutiveFailures)
     end
     
+    if ForgeAutomation.Flags.Status_ForgeActive then
+        ForgeAutomation.Flags.Status_ForgeActive = "Forge Active: " .. forgeActiveStatus
+    end
+    
     if ForgeAutomation.Flags.Status_Delay then
-        ForgeAutomation.Flags.Status_Delay = "Forge Delay: " .. tostring(forgeDelay) .. "s"
+        ForgeAutomation.Flags.Status_Delay = "Cycle Delay: " .. tostring(forgeDelay) .. "s"
+    end
+    
+    -- Update instructions based on status
+    if ForgeAutomation.Flags.AutoForge_Note then
+        if autoForgeEnabled then
+            ForgeAutomation.Flags.AutoForge_Note = "Note: Auto forge running, select ores in game"
+        else
+            ForgeAutomation.Flags.AutoForge_Note = "Note: Enable auto forge after selecting ores"
+        end
     end
 end
 
@@ -618,30 +495,25 @@ end)
 
 -- 🔰 Auto-initialize services
 task.spawn(function()
-    print("🔄 Waiting for forge services...")
+    print("🔄 Initializing forge automation...")
     local servicesReady = waitForKnitServices()
     if servicesReady then
         print("✅ Forge services initialized successfully!")
         
-        -- Update status setelah services ready
+        -- Set initial status
         updateStatus()
         
         library:Notify({
             Title = "Forge Automation",
-            Content = "Services initialized successfully!",
-            Duration = 3
+            Content = "Ready! Select ores in game, then enable Auto Forge",
+            Duration = 5
         })
     else
         print("❌ Failed to initialize forge services!")
         
-        -- Update error status
-        if ForgeAutomation.Flags.Status_AutoForge then
-            ForgeAutomation.Flags.Status_AutoForge = "Auto Forge: ERROR - Services not found"
-        end
-        
         library:Notify({
             Title = "Forge Automation",
-            Content = "Failed to initialize forge services!",
+            Content = "Error: Forge services not found",
             Duration = 5
         })
     end
@@ -652,34 +524,46 @@ library:SetKeybind("RightShift")
 
 -- 🔰 Print welcome message
 print("====================================")
-print("🔨 Forge Automation System v2.0")
+print("🔨 Forge Automation - No Ore Selection")
 print("🔧 Press RightShift to open/close GUI")
-print("🎯 Auto-initializing forge services...")
+print("📋 Instructions:")
+print("1. Go to forge station in game")
+print("2. Select ores manually")
+print("3. Enable Auto Forge in GUI")
 print("====================================")
 
 -- 🔰 Designer untuk customisasi GUI
 ForgeAutomation:CreateDesigner({
     Info = {
-        "Forge Automation System v2.0",
-        "Auto Forge with error handling",
-        "Multiple ore selection",
-        "Real-time status monitoring"
+        "Forge Automation System",
+        "No Ore Selection Required",
+        "Select ores in game first",
+        "Then enable Auto Forge"
     },
     Credit = true
 })
 
--- 🔰 Notifikasi ketika script loaded
-task.wait(2)
-library:Notify({
-    Title = "Forge Automation",
-    Content = "Script loaded successfully!",
-    Duration = 5
-})
-
--- 🔰 Cleanup ketika script di-unload
+-- 🔰 Cleanup
 library.signals:connection(game:GetService("Players").LocalPlayer.CharacterRemoving, function()
     if autoForgeEnabled then
         stopAutoForgeLoop()
     end
     print("🧹 Cleaning up forge automation...")
+end)
+
+-- 🔰 Auto check forge status periodically
+task.spawn(function()
+    while Wait() do
+        if autoForgeEnabled then
+            local forgeActive = checkForgeActive()
+            if forgeActive and not isForgeActive then
+                print("✅ Forge became active (ores selected)")
+                isForgeActive = true
+            elseif not forgeActive and isForgeActive then
+                print("ℹ️ Forge completed or reset")
+                isForgeActive = false
+            end
+        end
+        Wait(2)
+    end
 end)
