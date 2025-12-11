@@ -333,35 +333,39 @@ end
 -- GUI TOGGLE FUNCTIONS
 ----------------------------------------------------------------
 local function toggleGUI()
-    if PepsiForgeWindow then
-        guiVisible = not guiVisible
-        
-        if guiVisible then
-            PepsiForgeWindow:Open()
-            if openButton then
-                openButton:Visible(false)
-            end
-            WindUI:Notify({
-                Title = "GUI",
-                Content = "GUI opened",
-                Icon = "eye",
-                Duration = 1.5
-            })
-        else
-            PepsiForgeWindow:Close()
-            if openButton then
-                openButton:Visible(true)
-            end
-            WindUI:Notify({
-                Title = "GUI",
-                Content = "GUI hidden",
-                Icon = "eye-off",
-                Duration = 1.5
-            })
+    if not PepsiForgeWindow then return end
+    
+    if guiVisible then
+        -- Tutup GUI
+        PepsiForgeWindow:Close()
+        if PepsiForgeWindow.OpenButtonMain then
+            PepsiForgeWindow.OpenButtonMain:Visible(true)
         end
+        guiVisible = false
         
-        print("[FORGE SYSTEM] GUI toggled: " .. (guiVisible and "VISIBLE" or "HIDDEN"))
+        WindUI:Notify({
+            Title = "GUI",
+            Content = "GUI hidden",
+            Icon = "eye-off",
+            Duration = 1.5
+        })
+    else
+        -- Buka GUI
+        PepsiForgeWindow:Open()
+        if PepsiForgeWindow.OpenButtonMain then
+            PepsiForgeWindow.OpenButtonMain:Visible(false)
+        end
+        guiVisible = true
+        
+        WindUI:Notify({
+            Title = "GUI",
+            Content = "GUI opened",
+            Icon = "eye",
+            Duration = 1.5
+        })
     end
+    
+    print("[FORGE SYSTEM] GUI toggled: " .. (guiVisible and "VISIBLE" or "HIDDEN"))
 end
 
 ----------------------------------------------------------------
@@ -384,13 +388,14 @@ local function createWindUI()
         Acrylic = true,
         Background = Color3.fromRGB(30, 30, 35),
         Author = "Auto Forge System",
-        ToggleKey = Enum.KeyCode.RightControl, -- Set default toggle key
-        OpenButton = { -- Add open button configuration
+        ToggleKey = Enum.KeyCode.RightControl,
+        OpenButton = {
             Title = "Auto Forge",
             Icon = "hammer",
             Enabled = true,
             Position = UDim2.new(0, 10, 0.5, -50),
             OnlyIcon = false,
+            Draggable = true,
             Color = ColorSequence.new(
                 Color3.fromHex("#FF6B6B"),
                 Color3.fromHex("#4ECDC4")
@@ -398,8 +403,22 @@ local function createWindUI()
         }
     })
     
-    -- Store open button reference
-    openButton = PepsiForgeWindow.OpenButtonMain
+    -- Setup callbacks untuk show/hide open button
+    PepsiForgeWindow:OnOpen(function()
+        if PepsiForgeWindow.OpenButtonMain then
+            PepsiForgeWindow.OpenButtonMain:Visible(false)
+        end
+        guiVisible = true
+        print("[FORGE SYSTEM] Window opened, hiding open button")
+    end)
+    
+    PepsiForgeWindow:OnClose(function()
+        if PepsiForgeWindow.OpenButtonMain then
+            PepsiForgeWindow.OpenButtonMain:Visible(true)
+        end
+        guiVisible = false
+        print("[FORGE SYSTEM] Window closed, showing open button")
+    end)
     
     -- Create General Tab
     local GeneralTab = PepsiForgeWindow:Tab({
@@ -435,12 +454,17 @@ local function createWindUI()
     -- Divider
     GeneralTab:Divider()
     
-    -- GUI Toggle button
-    GeneralTab:Button({
-        Title = "👁️ Toggle GUI",
+    -- GUI Toggle button (dinamis)
+    local guiToggleBtn
+    guiToggleBtn = GeneralTab:Button({
+        Title = guiVisible and "👁️ Hide GUI" or "👁️ Show GUI",
         Desc = "Show/Hide the GUI interface",
         Callback = function()
             toggleGUI()
+            -- Update button text
+            if guiToggleBtn and guiToggleBtn.SetTitle then
+                guiToggleBtn:SetTitle(guiVisible and "👁️ Hide GUI" or "👁️ Show GUI")
+            end
         end
     })
     
@@ -459,8 +483,8 @@ local function createWindUI()
             flags.AutoHammerEnabled = value
             WindUI:Notify({
                 Title = "Auto Hammer",
-                Content = value and "ENABLED" or "DISABLED",
-                Icon = "hammer",
+                Content = value and "ENABLED" and "DISABLED",
+                Icon = value and "hammer" or "hammer-off",
                 Duration = 2
             })
             print("[FORGE SYSTEM] Auto Hammer: " .. (value and "ENABLED" or "DISABLED"))
@@ -474,6 +498,12 @@ local function createWindUI()
         Value = true,
         Callback = function(value)
             flags.SkipMeltEnabled = value
+            WindUI:Notify({
+                Title = "Skip Melt",
+                Content = value and "ENABLED" and "DISABLED",
+                Icon = value and "fire" or "fire-off",
+                Duration = 2
+            })
             print("[FORGE SYSTEM] Skip Melt: " .. (value and "ENABLED" or "DISABLED"))
         end
     })
@@ -485,6 +515,12 @@ local function createWindUI()
         Value = true,
         Callback = function(value)
             flags.SkipPourEnabled = value
+            WindUI:Notify({
+                Title = "Skip Pour",
+                Content = value and "ENABLED" and "DISABLED",
+                Icon = value and "droplet" or "droplet-off",
+                Duration = 2
+            })
             print("[FORGE SYSTEM] Skip Pour: " .. (value and "ENABLED" or "DISABLED"))
         end
     })
@@ -498,8 +534,8 @@ local function createWindUI()
             debugMode = value
             WindUI:Notify({
                 Title = "Debug Mode",
-                Content = value and "ENABLED" or "DISABLED",
-                Icon = "bug",
+                Content = value and "ENABLED" and "DISABLED",
+                Icon = value and "bug" or "bug-off",
                 Duration = 2
             })
             print("[FORGE SYSTEM] Debug Mode: " .. (value and "ENABLED" or "DISABLED"))
@@ -542,7 +578,7 @@ local function createWindUI()
         Value = "Full",
         Values = {"Full", "Icon Only", "Text Only"},
         Callback = function(value)
-            if openButton then
+            if PepsiForgeWindow then
                 local config = {
                     OnlyIcon = value == "Icon Only"
                 }
@@ -581,6 +617,12 @@ local function createWindUI()
         Value = true,
         Callback = function(value)
             flags.AutoInitialize = value
+            WindUI:Notify({
+                Title = "Auto Initialize",
+                Content = value and "ENABLED" and "DISABLED",
+                Icon = value and "settings" or "settings-off",
+                Duration = 2
+            })
             print("[FORGE SYSTEM] Auto Initialize: " .. (value and "ENABLED" or "DISABLED"))
         end
     })
@@ -700,7 +742,14 @@ local function createWindUI()
     
     setupKeybindListener()
     
+    -- Set default flags
+    flags.AutoHammerEnabled = true
+    flags.SkipMeltEnabled = true
+    flags.SkipPourEnabled = true
+    flags.AutoInitialize = true
+    
     print("[FORGE SYSTEM] WindUI loaded successfully")
+    print("[FORGE SYSTEM] Press " .. toggleKeybind .. " to toggle GUI")
     return true
 end
 
@@ -797,9 +846,6 @@ local function setupForgeSkip()
     
     -- Start UI monitor
     createUIMonitor()
-    
-    -- Set default flags
-    flags.AutoHammerEnabled = true
     
     -- Safety cleanup
     Players.LocalPlayer.AncestryChanged:Connect(function()
