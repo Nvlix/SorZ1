@@ -1,20 +1,16 @@
 -- ============================================================
--- FORGE SYSTEM + FLOATING HOTKEY BUTTON WITH PEPSI UI
+-- FORGE MINIGAME SKIPPER + AUTO HAMMER (MELT / POUR / HAMMER)
 -- ============================================================
 
--- Services
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local VirtualInputManager = game:GetService("VirtualInputManager")
+local Knit
 
--- Variables
-local library = nil
-local PepsiForgeWindow = nil
-local hotkeyButton = nil
-local Knit = nil
-local ForgeServiceRF = nil
+-- Remote references
+local ForgeServiceRF
+local ProximityServiceRF
 
 -- State
 local isHammerMinigameActive = false
@@ -24,206 +20,21 @@ local lastHammerTime = 0
 local HAMMER_COOLDOWN = 0.5
 local hammerTask = nil
 local stopRequested = false
+local debugMode = false
 
--- Settings
-local HOTKEY_IMAGE_URL = "https://i.imgur.com/0QvY6vJ.png"
-local HOTKEY_KEY = Enum.KeyCode.RightShift
-local buttonPosition = UDim2.new(0, 100, 0, 100)
+-- References to track minigame state
+local hammerMinigameUI = nil
+local minigameCompleteFlag = false
 
--- Flags
-local flags = {
-    AutoHammerEnabled = true,
-    SkipMeltEnabled = true,
-    SkipPourEnabled = true,
-    ShowHotkeyButton = true,
-    HotkeyEnabled = true
-}
+-- UI Library
+local library
+local PepsiForgeWindow
+local flags = {}
 
 ----------------------------------------------------------------
--- FLOATING HOTKEY BUTTON
+-- LOAD UI LIBRARY
 ----------------------------------------------------------------
-local function createHotkeyButton()
-    local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
-    
-    -- Create GUI
-    local hotkeyGui = Instance.new("ScreenGui")
-    hotkeyGui.Name = "HotkeyButtonGUI"
-    hotkeyGui.ResetOnSpawn = false
-    hotkeyGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    hotkeyGui.Parent = playerGui
-    
-    -- Create button
-    hotkeyButton = Instance.new("ImageButton")
-    hotkeyButton.Name = "HotkeyButton"
-    hotkeyButton.Size = UDim2.new(0, 50, 0, 50)
-    hotkeyButton.Position = buttonPosition
-    hotkeyButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    hotkeyButton.BackgroundTransparency = 0.3
-    hotkeyButton.BorderSizePixel = 0
-    hotkeyButton.AutoButtonColor = false
-    
-    -- Rounded corners
-    local uiCorner = Instance.new("UICorner")
-    uiCorner.CornerRadius = UDim.new(0.2, 0)
-    uiCorner.Parent = hotkeyButton
-    
-    -- Border
-    local uiStroke = Instance.new("UIStroke")
-    uiStroke.Color = Color3.fromRGB(0, 170, 255)
-    uiStroke.Thickness = 2
-    uiStroke.Transparency = 0.3
-    uiStroke.Parent = hotkeyButton
-    
-    -- Image from Imgur
-    local imageLabel = Instance.new("ImageLabel")
-    imageLabel.Name = "ButtonImage"
-    imageLabel.Size = UDim2.new(0.8, 0, 0.8, 0)
-    imageLabel.Position = UDim2.new(0.1, 0, 0.1, 0)
-    imageLabel.BackgroundTransparency = 1
-    imageLabel.Image = HOTKEY_IMAGE_URL
-    imageLabel.Parent = hotkeyButton
-    
-    -- Tooltip
-    local tooltip = Instance.new("TextLabel")
-    tooltip.Name = "Tooltip"
-    tooltip.Text = "Press: RSHIFT\nDrag to move"
-    tooltip.Size = UDim2.new(0, 100, 0, 40)
-    tooltip.Position = UDim2.new(1, 10, 0.5, -20)
-    tooltip.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    tooltip.TextColor3 = Color3.fromRGB(200, 200, 200)
-    tooltip.Font = Enum.Font.Gotham
-    tooltip.TextSize = 10
-    tooltip.TextWrapped = true
-    tooltip.Visible = false
-    tooltip.BorderSizePixel = 0
-    tooltip.ZIndex = 10
-    
-    local tooltipCorner = Instance.new("UICorner")
-    tooltipCorner.CornerRadius = UDim.new(0.2, 0)
-    tooltipCorner.Parent = tooltip
-    
-    tooltip.Parent = hotkeyButton
-    
-    -- Hover effects
-    hotkeyButton.MouseEnter:Connect(function()
-        if UserInputService.MouseEnabled then
-            tooltip.Visible = true
-            TweenService:Create(hotkeyButton, TweenInfo.new(0.2), {
-                BackgroundTransparency = 0.1,
-                Size = UDim2.new(0, 55, 0, 55)
-            }):Play()
-        end
-    end)
-    
-    hotkeyButton.MouseLeave:Connect(function()
-        if UserInputService.MouseEnabled then
-            tooltip.Visible = false
-            TweenService:Create(hotkeyButton, TweenInfo.new(0.2), {
-                BackgroundTransparency = 0.3,
-                Size = UDim2.new(0, 50, 0, 50)
-            }):Play()
-        end
-    end)
-    
-    -- Click animation
-    local function animateClick()
-        TweenService:Create(hotkeyButton, TweenInfo.new(0.1), {
-            Size = UDim2.new(0, 45, 0, 45)
-        }):Play()
-        task.wait(0.1)
-        TweenService:Create(hotkeyButton, TweenInfo.new(0.1), {
-            Size = UDim2.new(0, 50, 0, 50)
-        }):Play()
-    end
-    
-    -- Press Right Shift
-    local function pressRightShift()
-        if not flags.HotkeyEnabled then
-            return
-        end
-        
-        -- Simulate key press
-        pcall(function()
-            VirtualInputManager:SendKeyEvent(true, HOTKEY_KEY, false, nil)
-            task.wait(0.05)
-            VirtualInputManager:SendKeyEvent(false, HOTKEY_KEY, false, nil)
-        end)
-        
-        -- Visual feedback
-        TweenService:Create(hotkeyButton, TweenInfo.new(0.1), {
-            BackgroundColor3 = Color3.fromRGB(0, 255, 100)
-        }):Play()
-        task.wait(0.1)
-        TweenService:Create(hotkeyButton, TweenInfo.new(0.1), {
-            BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-        }):Play()
-    end
-    
-    -- Connect click
-    hotkeyButton.MouseButton1Click:Connect(function()
-        animateClick()
-        pressRightShift()
-    end)
-    
-    -- Touch support
-    if UserInputService.TouchEnabled then
-        hotkeyButton.TouchTap:Connect(function()
-            animateClick()
-            pressRightShift()
-        end)
-    end
-    
-    -- Drag functionality
-    local dragging = false
-    local dragStart = nil
-    local startPosition = nil
-    
-    local function updatePosition(input)
-        if not dragging then
-            return
-        end
-        
-        local delta = input.Position - dragStart
-        local newPosition = UDim2.new(
-            startPosition.X.Scale,
-            startPosition.X.Offset + delta.X,
-            startPosition.Y.Scale,
-            startPosition.Y.Offset + delta.Y
-        )
-        
-        hotkeyButton.Position = newPosition
-        buttonPosition = newPosition
-    end
-    
-    hotkeyButton.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPosition = hotkeyButton.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                end
-            end)
-        end
-    end)
-    
-    hotkeyButton.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            updatePosition(input)
-        end
-    end)
-    
-    hotkeyButton.Parent = hotkeyGui
-    hotkeyButton.Visible = flags.ShowHotkeyButton
-    
-    return hotkeyButton
-end
-
-----------------------------------------------------------------
--- LOAD PEPSI UI LIBRARY
-----------------------------------------------------------------
-local function loadPepsiUI()
+local function loadUILibrary()
     local success, lib = pcall(function()
         return loadstring(game:GetObjects("rbxassetid://7657867786")[1].Source)()
     end)
@@ -231,255 +42,68 @@ local function loadPepsiUI()
     if success then
         library = lib
         return true
-    end
-    return false
-end
-
-----------------------------------------------------------------
--- CREATE PEPSI UI
-----------------------------------------------------------------
-local function createPepsiUI()
-    if not loadPepsiUI() then
-        warn("[UI] Failed to load Pepsi UI")
-        return
-    end
-    
-    -- Create window
-    PepsiForgeWindow = library:CreateWindow({
-        Name = "Forge System",
-        Themeable = {
-            Info = "Floating Hotkey + Auto Forge"
-        }
-    })
-    
-    -- Create tab
-    local MainTab = PepsiForgeWindow:CreateTab({
-        Name = "Main"
-    })
-    
-    -- Hotkey Section
-    local HotkeySection = MainTab:CreateSection({
-        Name = "Hotkey Button",
-        Side = "Left"
-    })
-    
-    HotkeySection:AddToggle({
-        Name = "Enable Hotkey Button",
-        Value = flags.ShowHotkeyButton,
-        Flag = "ShowHotkeyButton",
-        Callback = function(value)
-            flags.ShowHotkeyButton = value
-            if hotkeyButton then
-                hotkeyButton.Visible = value
-            end
-            print("[Hotkey] Button visible:", value)
-        end
-    })
-    
-    HotkeySection:AddToggle({
-        Name = "Enable Hotkey Function",
-        Value = flags.HotkeyEnabled,
-        Flag = "HotkeyEnabled",
-        Callback = function(value)
-            flags.HotkeyEnabled = value
-            print("[Hotkey] Function enabled:", value)
-        end
-    })
-    
-    HotkeySection:AddTextbox({
-        Name = "Image URL",
-        Value = HOTKEY_IMAGE_URL,
-        Placeholder = "Enter Imgur URL",
-        Callback = function(value)
-            if value and value ~= "" then
-                HOTKEY_IMAGE_URL = value
-                if hotkeyButton then
-                    local image = hotkeyButton:FindFirstChild("ButtonImage")
-                    if image then
-                        image.Image = value
-                    end
-                end
-                print("[Hotkey] Image updated")
-            end
-        end
-    })
-    
-    HotkeySection:AddButton({
-        Name = "Test Hotkey",
-        Callback = function()
-            if hotkeyButton then
-                hotkeyButton.MouseButton1Click:Fire()
-            end
-        end
-    })
-    
-    HotkeySection:AddButton({
-        Name = "Reset Position",
-        Callback = function()
-            if hotkeyButton then
-                hotkeyButton.Position = UDim2.new(0, 100, 0, 100)
-                buttonPosition = hotkeyButton.Position
-            end
-        end
-    })
-    
-    -- Forge Section
-    local ForgeSection = MainTab:CreateSection({
-        Name = "Auto Forge",
-        Side = "Right"
-    })
-    
-    ForgeSection:AddButton({
-        Name = "Activate Hooks",
-        Callback = function()
-            local success = hookMinigameModules()
-            if success then
-                print("[Forge] Hooks activated")
-            end
-        end
-    })
-    
-    ForgeSection:AddToggle({
-        Name = "Auto Hammer",
-        Value = flags.AutoHammerEnabled,
-        Flag = "AutoHammerEnabled",
-        Callback = function(value)
-            flags.AutoHammerEnabled = value
-            print("[Forge] Auto hammer:", value)
-        end
-    })
-    
-    ForgeSection:AddToggle({
-        Name = "Skip Melt",
-        Value = flags.SkipMeltEnabled,
-        Flag = "SkipMeltEnabled",
-        Callback = function(value)
-            flags.SkipMeltEnabled = value
-            print("[Forge] Skip melt:", value)
-        end
-    })
-    
-    ForgeSection:AddToggle({
-        Name = "Skip Pour",
-        Value = flags.SkipPourEnabled,
-        Flag = "SkipPourEnabled",
-        Callback = function(value)
-            flags.SkipPourEnabled = value
-            print("[Forge] Skip pour:", value)
-        end
-    })
-    
-    ForgeSection:AddSlider({
-        Name = "Hammer Speed",
-        Value = HAMMER_COOLDOWN,
-        Min = 0.1,
-        Max = 1.0,
-        Precise = 1,
-        Flag = "HammerSpeed",
-        Format = function(value)
-            return string.format("%.1f", value) .. "s delay"
-        end,
-        Callback = function(value)
-            HAMMER_COOLDOWN = value
-            print("[Forge] Cooldown:", value)
-        end
-    })
-    
-    -- Control Section
-    local ControlSection = MainTab:CreateSection({
-        Name = "Control",
-        Side = "Left"
-    })
-    
-    ControlSection:AddButton({
-        Name = "Start Auto Hammer",
-        Callback = function()
-            startAutoHammer()
-        end
-    })
-    
-    ControlSection:AddButton({
-        Name = "Stop Auto Hammer",
-        Callback = function()
-            stopAutoHammer()
-        end
-    })
-    
-    -- Settings Section
-    local SettingsSection = MainTab:CreateSection({
-        Name = "Settings",
-        Side = "Right"
-    })
-    
-    SettingsSection:AddKeybind({
-        Name = "Toggle Hotkey Button",
-        Value = Enum.KeyCode.F,
-        Callback = function()
-            flags.ShowHotkeyButton = not flags.ShowHotkeyButton
-            if hotkeyButton then
-                hotkeyButton.Visible = flags.ShowHotkeyButton
-            end
-            print("[Hotkey] Toggled:", flags.ShowHotkeyButton)
-        end
-    })
-    
-    SettingsSection:AddButton({
-        Name = "Status Info",
-        Callback = function()
-            print("=== STATUS ===")
-            print("Hotkey Button:", hotkeyButton and "CREATED" or "NOT CREATED")
-            print("Hotkey Visible:", flags.ShowHotkeyButton)
-            print("Hotkey Enabled:", flags.HotkeyEnabled)
-            print("Auto Hammer:", autoHammerRunning and "RUNNING" or "STOPPED")
-            print("Minigame Active:", isHammerMinigameActive)
-            print("=============")
-        end
-    })
-    
-    print("[UI] Pepsi UI created successfully")
-end
-
-----------------------------------------------------------------
--- INITIALIZE REMOTES
-----------------------------------------------------------------
-local function initializeRemotes()
-    local success, result = pcall(function()
-        local Packages = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Packages")
-        Knit = require(Packages.Knit)
-        return Knit
-    end)
-    
-    if not success then
+    else
+        warn("[FORGE UI] Failed to load UI Library:", lib)
         return false
     end
-    
-    local Packages = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Packages")
-    local Services = Packages.Knit.Services
-    
-    local success1, result1 = pcall(function()
-        ForgeServiceRF = Services.ForgeService.RF.ChangeSequence
-        return ForgeServiceRF
-    end)
-    
-    return success1 and ForgeServiceRF ~= nil
 end
 
 ----------------------------------------------------------------
--- MINIGAME DETECTION
+-- REMOTES
+----------------------------------------------------------------
+local function initializeRemotes()
+    local Packages = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Packages")
+    Knit = require(Packages.Knit)
+    
+    local Services = Packages.Knit.Services
+    ForgeServiceRF = Services.ForgeService.RF.ChangeSequence
+    ProximityServiceRF = Services.ProximityService.RF.Forge
+    
+    return ForgeServiceRF ~= nil
+end
+
+----------------------------------------------------------------
+-- DEBUG LOGGING
+----------------------------------------------------------------
+local function debugLog(message)
+    if debugMode then
+        print("[DEBUG] " .. message)
+    end
+end
+
+----------------------------------------------------------------
+-- MINIGAME STATE DETECTION
 ----------------------------------------------------------------
 local function getHammerMinigameUI()
     local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
-    local forgeUI = playerGui:FindFirstChild("Forge")
+    local forgeUI = playerGui:WaitForChild("Forge", 5)
     if forgeUI then
-        return forgeUI:FindFirstChild("HammerMinigame")
+        return forgeUI:WaitForChild("HammerMinigame", 3)
     end
     return nil
 end
 
 local function isMinigameVisible()
-    local ui = getHammerMinigameUI()
-    if ui then
-        return ui.Visible
+    hammerMinigameUI = getHammerMinigameUI()
+    if hammerMinigameUI then
+        return hammerMinigameUI.Visible
+    end
+    return false
+end
+
+local function isMinigameTimerComplete()
+    if not hammerMinigameUI then
+        hammerMinigameUI = getHammerMinigameUI()
+    end
+    
+    if hammerMinigameUI then
+        local timerBar = hammerMinigameUI:FindFirstChild("Timer")
+        if timerBar then
+            local bar = timerBar:FindFirstChild("Bar")
+            if bar then
+                return bar.Size.X.Scale >= 0.95
+            end
+        end
     end
     return false
 end
@@ -488,30 +112,46 @@ end
 -- AUTO HAMMER ENGINE
 ----------------------------------------------------------------
 local function hammerLoop()
-    print("[HAMMER] Loop started")
+    debugLog("Hammer loop started")
     local hammerCount = 0
+    local lastCheckTime = tick()
     
     while isHammerMinigameActive and autoHammerRunning and not stopRequested do
-        if not isMinigameVisible() then
-            stopRequested = true
-            break
+        -- Check minigame state every 0.5 seconds
+        local currentTime = tick()
+        if currentTime - lastCheckTime > 0.5 then
+            if not isMinigameVisible() or isMinigameTimerComplete() then
+                debugLog("Minigame no longer active, stopping hammer")
+                stopRequested = true
+                break
+            end
+            lastCheckTime = currentTime
         end
         
-        local delay = HAMMER_COOLDOWN + math.random(-20, 30) / 100
-        delay = math.max(0.3, delay)
+        -- Calculate delay with variation
+        local baseDelay = HAMMER_COOLDOWN
+        local randomVariation = math.random(-20, 30) / 100
+        local totalDelay = math.max(0.3, baseDelay + randomVariation)
         
+        debugLog("Waiting " .. string.format("%.2f", totalDelay) .. "s before next hit")
+        
+        -- Wait with frequent checks
         local startWait = tick()
-        while tick() - startWait < delay do
-            if stopRequested then
+        while tick() - startWait < totalDelay do
+            if not isHammerMinigameActive or not autoHammerRunning or stopRequested then
+                debugLog("Breaking during wait")
                 return
             end
             task.wait(0.05)
         end
         
-        if stopRequested then
+        -- Final check before sending
+        if not isHammerMinigameActive or not autoHammerRunning or stopRequested then
+            debugLog("Breaking before send")
             return
         end
         
+        -- Send hammer hit
         local success, result = pcall(function()
             return ForgeServiceRF:InvokeServer(
                 "Hammer",
@@ -524,187 +164,605 @@ local function hammerLoop()
         
         if success then
             hammerCount = hammerCount + 1
+            lastHammerTime = tick()
+            debugLog("Hammer hit #" .. hammerCount .. " sent successfully")
+            
+            -- Check if timer is complete after each hit
+            if isMinigameTimerComplete() then
+                debugLog("Timer completed after hit #" .. hammerCount)
+                stopRequested = true
+                break
+            end
+        else
+            debugLog("Hammer hit failed: " .. tostring(result))
         end
     end
     
-    print("[HAMMER] Loop ended. Hits:", hammerCount)
+    debugLog("Hammer loop ended. Total hits: " .. hammerCount)
 end
 
 local function startAutoHammer()
     if autoHammerRunning then
+        debugLog("Auto hammer already running")
         return
     end
     
+    debugLog("Starting auto hammer system")
     autoHammerRunning = true
     stopRequested = false
+    minigameCompleteFlag = false
     
-    if hammerTask then
-        task.cancel(hammerTask)
-    end
-    
-    hammerTask = task.spawn(hammerLoop)
-end
-
-local function stopAutoHammer()
-    stopRequested = true
-    autoHammerRunning = false
-    isHammerMinigameActive = false
-    
+    -- Stop any existing task
     if hammerTask then
         task.cancel(hammerTask)
         hammerTask = nil
     end
+    
+    -- Start new task
+    hammerTask = task.spawn(function()
+        hammerLoop()
+        
+        -- Cleanup after loop ends
+        autoHammerRunning = false
+        hammerTask = nil
+        debugLog("Auto hammer task cleaned up")
+    end)
+end
+
+local function stopAutoHammer()
+    debugLog("Stopping auto hammer requested")
+    stopRequested = true
+    autoHammerRunning = false
+    isHammerMinigameActive = false
+    minigameCompleteFlag = true
+    
+    -- Cancel task if it exists
+    if hammerTask then
+        task.cancel(hammerTask)
+        hammerTask = nil
+    end
+    
+    debugLog("Auto hammer fully stopped")
 end
 
 ----------------------------------------------------------------
 -- MINIGAME HOOKING
 ----------------------------------------------------------------
 local function hookMinigameModules()
-    local success, ForgeController = pcall(function()
-        return Knit.GetController("ForgeController")
-    end)
-    
-    if not success or not ForgeController or not ForgeController.Minigames then
+    local ForgeController = Knit.GetController("ForgeController")
+    if not ForgeController or not ForgeController.Minigames then
+        warn("[FORGE SKIP] Cannot find ForgeController minigames")
         return false
     end
 
-    -- Melt
+    print("[FORGE SKIP] Found ForgeController with minigames")
+
+    -- MELT
     if ForgeController.Minigames.MeltMinigame then
         originalMinigames.MeltStart = ForgeController.Minigames.MeltMinigame.Start
 
         ForgeController.Minigames.MeltMinigame.Start = function(self, data)
-            if flags.SkipMeltEnabled then
-                local t = workspace:GetServerTimeNow()
-                task.wait(0.3)
-                return t - 0.001
-            elseif originalMinigames.MeltStart then
-                return originalMinigames.MeltStart(self, data)
-            end
+            print("[FORGE SKIP] Skipping Melt...")
+            local t = workspace:GetServerTimeNow()
+            task.wait(0.3)
+            print("[FORGE SKIP] Melt skipped!")
+            return t - 0.001
         end
     end
 
-    -- Pour
+    -- POUR
     if ForgeController.Minigames.PourMinigame then
         originalMinigames.PourStart = ForgeController.Minigames.PourMinigame.Start
 
         ForgeController.Minigames.PourMinigame.Start = function(self, data)
-            if flags.SkipPourEnabled then
-                local t = workspace:GetServerTimeNow()
-                task.wait(0.3)
-                return t - 0.001
-            elseif originalMinigames.PourStart then
-                return originalMinigames.PourStart(self, data)
-            end
+            print("[FORGE SKIP] Skipping Pour...")
+            local t = workspace:GetServerTimeNow()
+            task.wait(0.3)
+            print("[FORGE SKIP] Pour skipped!")
+            return t - 0.001
         end
     end
 
-    -- Hammer
+    -- HAMMER - Hook with UI monitoring
     if ForgeController.Minigames.HammerMinigame then
+        -- Store original functions
         local originalHammerStart = ForgeController.Minigames.HammerMinigame.Start
         local originalHammerStop = ForgeController.Minigames.HammerMinigame.Stop
         
+        -- Get UI reference
+        hammerMinigameUI = getHammerMinigameUI()
+        
+        -- Hook Start function
         ForgeController.Minigames.HammerMinigame.Start = function(self, ...)
-            isHammerMinigameActive = true
+            print("[FORGE HOOK] ===== HAMMER MINIGAME STARTED =====")
             
+            -- Reset states
+            isHammerMinigameActive = true
+            autoHammerRunning = false
+            stopRequested = false
+            minigameCompleteFlag = false
+            
+            -- Get fresh UI reference
+            hammerMinigameUI = getHammerMinigameUI()
+            
+            -- Start auto hammer if enabled
             if flags.AutoHammerEnabled then
                 task.spawn(function()
                     task.wait(0.5)
                     if isMinigameVisible() then
+                        print("[FORGE HOOK] UI detected, starting auto hammer...")
                         startAutoHammer()
                     end
                 end)
             end
             
+            -- Call original function
             if originalHammerStart then
                 return originalHammerStart(self, ...)
             end
             return nil
         end
 
+        -- Hook Stop function
         ForgeController.Minigames.HammerMinigame.Stop = function(self, ...)
+            print("[FORGE HOOK] ===== HAMMER MINIGAME STOPPED =====")
+            
+            -- Immediate stop
             stopAutoHammer()
             
+            -- Call original function
             if originalHammerStop then
                 return originalHammerStop(self, ...)
             end
             return nil
         end
+        
+        print("[FORGE HOOK] Hammer minigame hooks installed with UI monitoring")
     end
 
+    print("[FORGE SKIP] All minigames hooked successfully")
     return true
 end
 
 ----------------------------------------------------------------
--- MAIN SETUP
+-- CREATE PEPSI UI
 ----------------------------------------------------------------
-local function setupSystem()
-    print("=== FORGE SYSTEM ===")
-    
-    -- Initialize
-    local remotesOk = initializeRemotes()
-    if not remotesOk then
-        warn("Failed to initialize remotes")
-        return
+local function createPepsiUI()
+    if not loadUILibrary() then
+        warn("[FORGE UI] Failed to load UI Library, creating fallback UI")
+        return createFallbackUI()
     end
     
-    -- Create hotkey button
-    createHotkeyButton()
-    print("Hotkey button created")
+    -- Create main window
+    PepsiForgeWindow = library:CreateWindow({
+        Name = "⚡ Forge Auto System",
+        Themeable = {
+            Info = "Auto Forge by Pepsi's UI"
+        }
+    })
     
-    -- Create Pepsi UI
+    -- Create General Tab
+    local GeneralTab = PepsiForgeWindow:CreateTab({
+        Name = "General"
+    })
+    
+    -- Auto Forge Section
+    local AutoForgeSection = GeneralTab:CreateSection({
+        Name = "Auto Forge",
+        Side = "Left"
+    })
+    
+    -- Activation button
+    AutoForgeSection:AddButton({
+        Name = "🔧 Activate Hooks",
+        Callback = function()
+            local success = hookMinigameModules()
+            if success then
+                library.subs.Wait(0.5)
+                print("[FORGE SYSTEM] Hooks activated successfully!")
+            end
+        end
+    })
+    
+    -- Auto Hammer toggle
+    AutoForgeSection:AddToggle({
+        Name = "🔨 Auto Hammer",
+        Value = true,
+        Flag = "AutoHammerEnabled",
+        Callback = function(value)
+            flags.AutoHammerEnabled = value
+            print("[FORGE SYSTEM] Auto Hammer: " .. (value and "ENABLED" or "DISABLED"))
+        end
+    })
+    
+    -- Melt Skip toggle
+    AutoForgeSection:AddToggle({
+        Name = "🔥 Skip Melt",
+        Value = true,
+        Flag = "SkipMeltEnabled",
+        Callback = function(value)
+            print("[FORGE SYSTEM] Skip Melt: " .. (value and "ENABLED" or "DISABLED"))
+        end
+    })
+    
+    -- Pour Skip toggle
+    AutoForgeSection:AddToggle({
+        Name = "💧 Skip Pour",
+        Value = true,
+        Flag = "SkipPourEnabled",
+        Callback = function(value)
+            print("[FORGE SYSTEM] Skip Pour: " .. (value and "ENABLED" or "DISABLED"))
+        end
+    })
+    
+    -- Settings Section
+    local SettingsSection = GeneralTab:CreateSection({
+        Name = "Settings",
+        Side = "Right"
+    })
+    
+    -- Hammer Speed Slider
+    SettingsSection:AddSlider({
+        Name = "Hammer Speed",
+        Value = HAMMER_COOLDOWN,
+        Min = 0.1,
+        Max = 1.0,
+        Precise = 1,
+        Flag = "HammerSpeed",
+        Format = function(value)
+            return string.format("%.1f", value) .. "s delay"
+        end,
+        Callback = function(value)
+            HAMMER_COOLDOWN = value
+            print("[FORGE SYSTEM] Hammer cooldown set to: " .. string.format("%.1f", value) .. "s")
+        end
+    })
+    
+    -- Debug Mode toggle
+    SettingsSection:AddToggle({
+        Name = "🔍 Debug Mode",
+        Value = false,
+        Flag = "DebugMode",
+        Callback = function(value)
+            debugMode = value
+            print("[FORGE SYSTEM] Debug Mode: " .. (value and "ENABLED" or "DISABLED"))
+        end
+    })
+    
+    -- Control Section
+    local ControlSection = GeneralTab:CreateSection({
+        Name = "Control",
+        Side = "Right"
+    })
+    
+    -- Emergency Stop button
+    ControlSection:AddButton({
+        Name = "🛑 Emergency Stop",
+        Callback = function()
+            print("[EMERGENCY] Manual stop triggered")
+            stopAutoHammer()
+        end
+    })
+    
+    -- Status display button
+    ControlSection:AddButton({
+        Name = "📊 Check Status",
+        Callback = function()
+            local status = {
+                "=== FORGE SYSTEM STATUS ===",
+                "Minigame Active: " .. tostring(isHammerMinigameActive),
+                "Auto Hammer Running: " .. tostring(autoHammerRunning),
+                "Hammer Task: " .. (hammerTask and "ACTIVE" or "INACTIVE"),
+                "Cooldown: " .. string.format("%.1f", HAMMER_COOLDOWN) .. "s",
+                "UI Visible: " .. tostring(isMinigameVisible()),
+                "Hooks Active: " .. (originalMinigames.MeltStart and "YES" or "NO")
+            }
+            
+            for _, line in ipairs(status) do
+                print(line)
+            end
+        end
+    })
+    
+    -- System Section
+    local SystemSection = GeneralTab:CreateSection({
+        Name = "System",
+        Side = "Left"
+    })
+    
+    -- Auto initialize toggle
+    SystemSection:AddToggle({
+        Name = "⚙️ Auto Initialize",
+        Value = true,
+        Flag = "AutoInitialize",
+        Callback = function(value)
+            print("[FORGE SYSTEM] Auto Initialize: " .. (value and "ENABLED" or "DISABLED"))
+        end
+    })
+    
+    -- Cleanup on close
+    SystemSection:AddButton({
+        Name = "🧹 Cleanup System",
+        Callback = function()
+            print("[FORGE SYSTEM] Cleaning up...")
+            stopAutoHammer()
+            print("[FORGE SYSTEM] Cleanup complete")
+        end
+    })
+    
+    print("[FORGE SYSTEM] Pepsi's UI loaded successfully")
+    return true
+end
+
+----------------------------------------------------------------
+-- FALLBACK UI (if Pepsi's UI fails)
+----------------------------------------------------------------
+local function createFallbackUI()
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "ForgeSkipUI"
+    screenGui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 250, 0, 180)
+    frame.Position = UDim2.new(0.5, -125, 0, 10)
+    frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    frame.BorderColor3 = Color3.fromRGB(60, 60, 60)
+    frame.BorderSizePixel = 2
+    frame.Parent = screenGui
+
+    local title = Instance.new("TextLabel")
+    title.Text = "⚡ FORGE AUTO SYSTEM"
+    title.Size = UDim2.new(1, 0, 0, 30)
+    title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    title.TextColor3 = Color3.fromRGB(255, 200, 100)
+    title.Font = Enum.Font.Code
+    title.TextSize = 16
+    title.Parent = frame
+
+    local status = Instance.new("TextLabel")
+    status.Text = "Status: Ready"
+    status.Size = UDim2.new(1, 0, 0, 25)
+    status.Position = UDim2.new(0, 0, 0.2, 0)
+    status.BackgroundTransparency = 1
+    status.TextColor3 = Color3.fromRGB(200, 200, 200)
+    status.Font = Enum.Font.Code
+    status.TextSize = 12
+    status.Parent = frame
+
+    local hookBtn = Instance.new("TextButton")
+    hookBtn.Text = "ACTIVATE HOOKS"
+    hookBtn.Size = UDim2.new(0.8, 0, 0, 40)
+    hookBtn.Position = UDim2.new(0.1, 0, 0.55, 0)
+    hookBtn.BackgroundColor3 = Color3.fromRGB(60, 140, 60)
+    hookBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    hookBtn.Font = Enum.Font.Code
+    hookBtn.TextSize = 14
+    hookBtn.Parent = frame
+
+    hookBtn.MouseButton1Click:Connect(function()
+        local s = hookMinigameModules()
+        if s then
+            hookBtn.Text = "HOOKS ACTIVE"
+            hookBtn.BackgroundColor3 = Color3.fromRGB(140, 60, 60)
+            status.Text = "Status: Hooks Active"
+        end
+    end)
+
+    return screenGui
+end
+
+----------------------------------------------------------------
+-- UI TOGGLE BUTTON
+----------------------------------------------------------------
+local function createUIToggleButton()
+    print("[FORGE SYSTEM] Creating UI toggle button...")
+    
+    -- Create the toggle button
+    local toggleUI = Instance.new("ScreenGui")
+    toggleUI.Name = "ForgeUIToggle"
+    toggleUI.DisplayOrder = 100
+    toggleUI.ResetOnSpawn = false
+    toggleUI.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+    
+    local toggleButton = Instance.new("TextButton")
+    toggleButton.Name = "ToggleButton"
+    toggleButton.Size = UDim2.new(0, 50, 0, 50)
+    toggleButton.Position = UDim2.new(1, -60, 0.5, -25)
+    toggleButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    toggleButton.BorderColor3 = Color3.fromRGB(60, 60, 60)
+    toggleButton.BorderSizePixel = 2
+    toggleButton.Text = "⚡"
+    toggleButton.TextColor3 = Color3.fromRGB(255, 200, 100)
+    toggleButton.TextSize = 20
+    toggleButton.Font = Enum.Font.Code
+    toggleButton.Parent = toggleUI
+    
+    -- Add rounded corners
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = toggleButton
+    
+    -- Make button draggable
+    local dragging = false
+    local dragInput, dragStart, startPos
+    
+    toggleButton.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = toggleButton.Position
+            
+            -- Button press effect
+            toggleButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                    toggleButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+                end
+            end)
+        end
+    end)
+    
+    toggleButton.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement then
+            dragInput = input
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input == dragInput then
+            local delta = input.Position - dragStart
+            toggleButton.Position = UDim2.new(
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+    
+    -- Function to toggle UI visibility
+    local function toggleUIVisibility()
+        if library and library.base then
+            library.base.Visible = not library.base.Visible
+            toggleButton.Text = library.base.Visible and "⚡" or "🔧"
+            
+            -- Add feedback animation
+            toggleButton.Size = UDim2.new(0, 55, 0, 55)
+            toggleButton.BackgroundColor3 = library.base.Visible and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(30, 30, 30)
+            task.wait(0.1)
+            toggleButton.Size = UDim2.new(0, 50, 0, 50)
+            toggleButton.BackgroundColor3 = library.base.Visible and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(30, 30, 30)
+            
+            print("[FORGE SYSTEM] UI " .. (library.base.Visible and "shown" or "hidden"))
+        end
+    end
+    
+    -- Click event for button
+    toggleButton.MouseButton1Click:Connect(toggleUIVisibility)
+    
+    -- RSHIFT hotkey
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if not gameProcessed and input.KeyCode == Enum.KeyCode.RightShift then
+            toggleUIVisibility()
+        end
+    end)
+    
+    -- Hover effects
+    toggleButton.MouseEnter:Connect(function()
+        if not dragging then
+            toggleButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        end
+    end)
+    
+    toggleButton.MouseLeave:Connect(function()
+        if not dragging then
+            toggleButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        end
+    end)
+    
+    print("[FORGE SYSTEM] UI toggle button created (Press RSHIFT or click ⚡)")
+    return toggleUI
+end
+
+----------------------------------------------------------------
+-- UI MONITORING SYSTEM
+----------------------------------------------------------------
+local function createUIMonitor()
+    task.spawn(function()
+        while library and library.subs and library.subs.Wait(0.2) do
+            if autoHammerRunning and flags.AutoHammerEnabled then
+                -- Check UI visibility
+                if not isMinigameVisible() or isMinigameTimerComplete() then
+                    debugLog("UI disappeared or timer complete, stopping hammer")
+                    stopAutoHammer()
+                end
+            end
+        end
+    end)
+end
+
+----------------------------------------------------------------
+-- MAIN INITIALIZATION
+----------------------------------------------------------------
+local function setupForgeSkip()
+    print("========================================")
+    print("FORGE SKIPPER + AUTO HAMMER INITIALIZING")
+    print("========================================")
+
+    local ok = initializeRemotes()
+    if not ok then
+        warn("[FORGE SKIP] Remote initialization failed")
+        return
+    end
+
+    -- Create UI
     createPepsiUI()
-    print("Pepsi UI created")
     
-    -- Cleanup
+    -- Start UI monitor
+    createUIMonitor()
+    
+    -- Set default flags
+    flags.AutoHammerEnabled = true
+    
+    -- Create toggle button after UI is loaded
+    task.spawn(function()
+        -- Tunggu library terload
+        while not library do
+            task.wait(1)
+        end
+        
+        task.wait(2) -- Tunggu sedikit lebih lama untuk pastikan UI selesai dibuat
+        createUIToggleButton()
+    end)
+    
+    -- Safety cleanup
     Players.LocalPlayer.AncestryChanged:Connect(function()
         if not Players.LocalPlayer.Parent then
+            print("[CLEANUP] Player leaving, stopping everything")
             stopAutoHammer()
         end
     end)
     
-    print("System ready!")
-    print("- Floating hotkey button (Right Shift)")
-    print("- Drag to move")
-    print("- Pepsi UI for controls")
+    -- Game close cleanup
+    game:BindToClose(function()
+        print("[SHUTDOWN] Game closing, stopping auto hammer")
+        stopAutoHammer()
+    end)
+    
+    print("[FORGE SYSTEM] Initialization complete")
+    print("[FORGE SYSTEM] Default cooldown: " .. HAMMER_COOLDOWN .. "s")
+    print("[FORGE SYSTEM] Use UI to configure settings")
+    print("[FORGE SYSTEM] Toggle UI with RSHIFT or the ⚡ button")
+    print("========================================")
 end
 
--- Start
+-- Delayed initialization
 task.spawn(function()
-    task.wait(5)
-    local success, err = pcall(setupSystem)
+    task.wait(6)
+    
+    local success, err = pcall(setupForgeSkip)
     if not success then
-        warn("Setup error:", err)
+        warn("[FORGE SYSTEM] Initialization error:", err)
     end
 end)
 
--- API
+-- Return functions for external use
 return {
-    -- Hotkey
-    PressHotkey = function()
-        if hotkeyButton then
-            hotkeyButton.MouseButton1Click:Fire()
-        end
-    end,
-    UpdateImage = function(url)
-        if url and hotkeyButton then
-            local image = hotkeyButton:FindFirstChild("ButtonImage")
-            if image then
-                image.Image = url
-            end
-        end
-    end,
-    
-    -- Forge
-    Activate = hookMinigameModules,
-    StartHammer = startAutoHammer,
     StopHammer = stopAutoHammer,
-    
-    -- Status
+    StartHammer = startAutoHammer,
     GetStatus = function()
         return {
-            HotkeyVisible = flags.ShowHotkeyButton,
-            HotkeyEnabled = flags.HotkeyEnabled,
-            HammerRunning = autoHammerRunning
+            MinigameActive = isHammerMinigameActive,
+            AutoRunning = autoHammerRunning,
+            Cooldown = HAMMER_COOLDOWN,
+            UIVisible = isMinigameVisible(),
+            TimerComplete = isMinigameTimerComplete(),
+            Flags = flags
         }
+    end,
+    SetDebugMode = function(value)
+        debugMode = value
     end
 }
