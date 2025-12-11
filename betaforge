@@ -5,7 +5,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 local Knit
 
 -- Remote references
@@ -26,24 +25,24 @@ local debugMode = false
 local hammerMinigameUI = nil
 local minigameCompleteFlag = false
 
--- UI Library
-local library
+-- WindUI
+local WindUI
 local PepsiForgeWindow
 local flags = {}
 
 ----------------------------------------------------------------
--- LOAD UI LIBRARY
+-- LOAD WINDUI LIBRARY
 ----------------------------------------------------------------
 local function loadUILibrary()
     local success, lib = pcall(function()
-        return loadstring(game:GetObjects("rbxassetid://7657867786")[1].Source)()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
     end)
     
     if success then
-        library = lib
+        WindUI = lib
         return true
     else
-        warn("[FORGE UI] Failed to load UI Library:", lib)
+        warn("[FORGE UI] Failed to load WindUI Library:", lib)
         return false
     end
 end
@@ -325,177 +324,258 @@ local function hookMinigameModules()
 end
 
 ----------------------------------------------------------------
--- CREATE PEPSI UI
+-- CREATE WINDUI WINDOW
 ----------------------------------------------------------------
-local function createPepsiUI()
+local function createWindUI()
     if not loadUILibrary() then
-        warn("[FORGE UI] Failed to load UI Library, creating fallback UI")
+        warn("[FORGE UI] Failed to load WindUI Library, creating fallback UI")
         return createFallbackUI()
     end
     
     -- Create main window
-    PepsiForgeWindow = library:CreateWindow({
-        Name = "⚡ Forge Auto System",
-        Themeable = {
-            Info = "Auto Forge by Pepsi's UI"
-        }
+    PepsiForgeWindow = WindUI:CreateWindow({
+        Title = "JawirScript - Auto Forge",
+        Folder = "JawirScriptForge",
+        Theme = "Dark",
+        Size = UDim2.new(0, 500, 0, 420),
+        Radius = 12,
+        Resizable = true,
+        Acrylic = true,
+        Background = Color3.fromRGB(30, 30, 35),
+        Author = "Auto Forge System"
     })
     
     -- Create General Tab
-    local GeneralTab = PepsiForgeWindow:CreateTab({
-        Name = "General"
+    local GeneralTab = PepsiForgeWindow:Tab({
+        Title = "Main",
+        Desc = "Main Controls"
     })
     
     -- Auto Forge Section
-    local AutoForgeSection = GeneralTab:CreateSection({
-        Name = "Auto Forge",
-        Side = "Left"
+    GeneralTab:Paragraph({
+        Title = "⚙️ Auto Forge System",
+        Desc = "Skip minigames and auto-hammer"
     })
     
     -- Activation button
-    AutoForgeSection:AddButton({
-        Name = "🔧 Activate Hooks",
+    GeneralTab:Button({
+        Title = "🔧 Activate Hooks",
+        Desc = "Activate minigame hooks",
         Callback = function()
             local success = hookMinigameModules()
             if success then
-                library.subs.Wait(0.5)
+                task.wait(0.5)
+                WindUI:Notify({
+                    Title = "Hooks Activated",
+                    Content = "Minigame hooks activated successfully!",
+                    Icon = "check-circle",
+                    Duration = 3
+                })
                 print("[FORGE SYSTEM] Hooks activated successfully!")
             end
         end
     })
     
+    -- Divider
+    GeneralTab:Divider()
+    
+    -- Toggles Section
+    GeneralTab:Paragraph({
+        Title = "⚡ Quick Toggles",
+        Desc = "Enable/disable features"
+    })
+    
     -- Auto Hammer toggle
-    AutoForgeSection:AddToggle({
-        Name = "🔨 Auto Hammer",
+    GeneralTab:Toggle({
+        Title = "🔨 Auto Hammer",
+        Desc = "Automatically hammer during minigame",
         Value = true,
-        Flag = "AutoHammerEnabled",
         Callback = function(value)
             flags.AutoHammerEnabled = value
+            WindUI:Notify({
+                Title = "Auto Hammer",
+                Content = value and "ENABLED" or "DISABLED",
+                Icon = "hammer",
+                Duration = 2
+            })
             print("[FORGE SYSTEM] Auto Hammer: " .. (value and "ENABLED" or "DISABLED"))
         end
     })
     
     -- Melt Skip toggle
-    AutoForgeSection:AddToggle({
-        Name = "🔥 Skip Melt",
+    GeneralTab:Toggle({
+        Title = "🔥 Skip Melt",
+        Desc = "Skip the melt minigame",
         Value = true,
-        Flag = "SkipMeltEnabled",
         Callback = function(value)
+            flags.SkipMeltEnabled = value
             print("[FORGE SYSTEM] Skip Melt: " .. (value and "ENABLED" or "DISABLED"))
         end
     })
     
     -- Pour Skip toggle
-    AutoForgeSection:AddToggle({
-        Name = "💧 Skip Pour",
+    GeneralTab:Toggle({
+        Title = "💧 Skip Pour",
+        Desc = "Skip the pour minigame",
         Value = true,
-        Flag = "SkipPourEnabled",
         Callback = function(value)
+            flags.SkipPourEnabled = value
             print("[FORGE SYSTEM] Skip Pour: " .. (value and "ENABLED" or "DISABLED"))
         end
     })
     
-    -- Settings Section
-    local SettingsSection = GeneralTab:CreateSection({
-        Name = "Settings",
-        Side = "Right"
-    })
-    
-    -- Hammer Speed Slider
-    SettingsSection:AddSlider({
-        Name = "Hammer Speed",
-        Value = HAMMER_COOLDOWN,
-        Min = 0.1,
-        Max = 1.0,
-        Precise = 1,
-        Flag = "HammerSpeed",
-        Format = function(value)
-            return string.format("%.1f", value) .. "s delay"
-        end,
-        Callback = function(value)
-            HAMMER_COOLDOWN = value
-            print("[FORGE SYSTEM] Hammer cooldown set to: " .. string.format("%.1f", value) .. "s")
-        end
-    })
-    
     -- Debug Mode toggle
-    SettingsSection:AddToggle({
-        Name = "🔍 Debug Mode",
+    GeneralTab:Toggle({
+        Title = "🔍 Debug Mode",
+        Desc = "Enable debug logging",
         Value = false,
-        Flag = "DebugMode",
         Callback = function(value)
             debugMode = value
+            WindUI:Notify({
+                Title = "Debug Mode",
+                Content = value and "ENABLED" or "DISABLED",
+                Icon = "bug",
+                Duration = 2
+            })
             print("[FORGE SYSTEM] Debug Mode: " .. (value and "ENABLED" or "DISABLED"))
         end
     })
     
+    -- Create Settings Tab
+    local SettingsTab = PepsiForgeWindow:Tab({
+        Title = "Settings",
+        Desc = "Configuration Settings"
+    })
+    
+    -- Hammer Speed Slider
+    SettingsTab:Slider({
+        Title = "Hammer Speed",
+        Desc = "Delay between hammer hits",
+        Value = {Default = HAMMER_COOLDOWN, Min = 0.1, Max = 1.0},
+        Callback = function(value)
+            HAMMER_COOLDOWN = value
+            WindUI:Notify({
+                Title = "Hammer Speed",
+                Content = "Set to: " .. string.format("%.1f", value) .. "s",
+                Icon = "gauge",
+                Duration = 2
+            })
+            print("[FORGE SYSTEM] Hammer cooldown set to: " .. string.format("%.1f", value) .. "s")
+        end
+    })
+    
+    -- Auto initialize toggle
+    SettingsTab:Toggle({
+        Title = "⚙️ Auto Initialize",
+        Desc = "Automatically initialize on game start",
+        Value = true,
+        Callback = function(value)
+            flags.AutoInitialize = value
+            print("[FORGE SYSTEM] Auto Initialize: " .. (value and "ENABLED" or "DISABLED"))
+        end
+    })
+    
     -- Control Section
-    local ControlSection = GeneralTab:CreateSection({
-        Name = "Control",
-        Side = "Right"
+    SettingsTab:Paragraph({
+        Title = "🛑 Emergency Controls",
+        Desc = "Manual control buttons"
     })
     
     -- Emergency Stop button
-    ControlSection:AddButton({
-        Name = "🛑 Emergency Stop",
+    SettingsTab:Button({
+        Title = "🛑 Emergency Stop",
+        Desc = "Immediately stop all auto systems",
         Callback = function()
+            WindUI:Notify({
+                Title = "Emergency Stop",
+                Content = "Stopping all auto systems...",
+                Icon = "alert-octagon",
+                Duration = 2
+            })
             print("[EMERGENCY] Manual stop triggered")
             stopAutoHammer()
         end
     })
     
     -- Status display button
-    ControlSection:AddButton({
-        Name = "📊 Check Status",
+    SettingsTab:Button({
+        Title = "📊 Check Status",
+        Desc = "Display current system status",
         Callback = function()
-            local status = {
-                "=== FORGE SYSTEM STATUS ===",
-                "Minigame Active: " .. tostring(isHammerMinigameActive),
-                "Auto Hammer Running: " .. tostring(autoHammerRunning),
-                "Hammer Task: " .. (hammerTask and "ACTIVE" or "INACTIVE"),
-                "Cooldown: " .. string.format("%.1f", HAMMER_COOLDOWN) .. "s",
-                "UI Visible: " .. tostring(isMinigameVisible()),
-                "Hooks Active: " .. (originalMinigames.MeltStart and "YES" or "NO")
-            }
+            local statusText = "=== FORGE SYSTEM STATUS ===\n"
+            statusText = statusText .. "Minigame Active: " .. tostring(isHammerMinigameActive) .. "\n"
+            statusText = statusText .. "Auto Hammer Running: " .. tostring(autoHammerRunning) .. "\n"
+            statusText = statusText .. "Hammer Task: " .. (hammerTask and "ACTIVE" or "INACTIVE") .. "\n"
+            statusText = statusText .. "Cooldown: " .. string.format("%.1f", HAMMER_COOLDOWN) .. "s\n"
+            statusText = statusText .. "UI Visible: " .. tostring(isMinigameVisible()) .. "\n"
+            statusText = statusText .. "Hooks Active: " .. (originalMinigames.MeltStart and "YES" or "NO")
             
-            for _, line in ipairs(status) do
-                print(line)
-            end
+            WindUI:Dialog({
+                Title = "System Status",
+                Content = statusText,
+                Icon = "info",
+                Buttons = {
+                    {
+                        Title = "Close",
+                        Callback = function() end
+                    }
+                }
+            })
         end
     })
     
-    -- System Section
-    local SystemSection = GeneralTab:CreateSection({
-        Name = "System",
-        Side = "Left"
-    })
-    
-    -- Auto initialize toggle
-    SystemSection:AddToggle({
-        Name = "⚙️ Auto Initialize",
-        Value = true,
-        Flag = "AutoInitialize",
-        Callback = function(value)
-            print("[FORGE SYSTEM] Auto Initialize: " .. (value and "ENABLED" or "DISABLED"))
-        end
-    })
-    
-    -- Cleanup on close
-    SystemSection:AddButton({
-        Name = "🧹 Cleanup System",
+    -- Cleanup button
+    SettingsTab:Button({
+        Title = "🧹 Cleanup System",
+        Desc = "Clean up all resources",
         Callback = function()
+            WindUI:Notify({
+                Title = "Cleanup",
+                Content = "Cleaning up system resources...",
+                Icon = "broom",
+                Duration = 2
+            })
             print("[FORGE SYSTEM] Cleaning up...")
             stopAutoHammer()
             print("[FORGE SYSTEM] Cleanup complete")
         end
     })
     
-    print("[FORGE SYSTEM] Pepsi's UI loaded successfully")
+    -- Create Info Tab
+    local InfoTab = PepsiForgeWindow:Tab({
+        Title = "Info",
+        Desc = "System Information"
+    })
+    
+    InfoTab:Paragraph({
+        Title = "📖 Auto Forge System v1.0",
+        Desc = "Automatically skips forge minigames and hammers for you.\n\nFeatures:\n• Skip Melt minigame\n• Skip Pour minigame\n• Auto Hammer during hammer minigame\n• Adjustable hammer speed\n• Emergency stop\n• Debug mode\n\nBy JawirScript"
+    })
+    
+    InfoTab:Button({
+        Title = "📞 Report Issue",
+        Desc = "Open issue reporting",
+        Callback = function()
+            WindUI:Dialog({
+                Title = "Report Issue",
+                Content = "If you encounter any issues:\n1. Enable debug mode\n2. Check the console for logs\n3. Take screenshots\n4. Contact the developer",
+                Icon = "help-circle",
+                Buttons = {
+                    {
+                        Title = "Close",
+                        Callback = function() end
+                    }
+                }
+            })
+        end
+    })
+    
+    print("[FORGE SYSTEM] WindUI loaded successfully")
     return true
 end
 
 ----------------------------------------------------------------
--- FALLBACK UI (if Pepsi's UI fails)
+-- FALLBACK UI (if WindUI fails)
 ----------------------------------------------------------------
 local function createFallbackUI()
     local screenGui = Instance.new("ScreenGui")
@@ -552,133 +632,11 @@ local function createFallbackUI()
 end
 
 ----------------------------------------------------------------
--- UI TOGGLE BUTTON
-----------------------------------------------------------------
-local function createUIToggleButton()
-    print("[FORGE SYSTEM] Creating UI toggle button...")
-    
-    -- Create the toggle button
-    local toggleUI = Instance.new("ScreenGui")
-    toggleUI.Name = "ForgeUIToggle"
-    toggleUI.DisplayOrder = 100
-    toggleUI.ResetOnSpawn = false
-    toggleUI.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
-    
-    local toggleButton = Instance.new("TextButton")
-    toggleButton.Name = "ToggleButton"
-    toggleButton.Size = UDim2.new(0, 50, 0, 50)
-    toggleButton.Position = UDim2.new(1, -60, 0.5, -25)
-    toggleButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    toggleButton.BorderColor3 = Color3.fromRGB(60, 60, 60)
-    toggleButton.BorderSizePixel = 2
-    toggleButton.Text = "⚡"
-    toggleButton.TextColor3 = Color3.fromRGB(255, 200, 100)
-    toggleButton.TextSize = 20
-    toggleButton.Font = Enum.Font.Code
-    toggleButton.Parent = toggleUI
-    
-    -- Add rounded corners
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = toggleButton
-    
-    -- Shared function untuk toggle UI (digunakan oleh RSHIFT dan button)
-    local function toggleUIFunction()
-        if library and library.base then
-            local isNowVisible = not library.base.Visible
-            library.base.Visible = isNowVisible
-            
-            -- Update button appearance
-            toggleButton.Text = isNowVisible and "⚡" or "🔧"
-            toggleButton.BackgroundColor3 = isNowVisible and Color3.fromRGB(40, 40, 50) or Color3.fromRGB(30, 30, 30)
-            
-            -- Animation feedback
-            toggleButton.Size = UDim2.new(0, 55, 0, 55)
-            task.wait(0.1)
-            toggleButton.Size = UDim2.new(0, 50, 0, 50)
-            
-            print("[FORGE SYSTEM] UI " .. (isNowVisible and "shown" or "hidden"))
-        end
-    end
-    
-    -- Make button draggable
-    local dragging = false
-    local dragInput, dragStart, startPos
-    
-    toggleButton.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            dragStart = input.Position
-            startPos = toggleButton.Position
-            
-            -- Visual feedback
-            toggleButton.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
-            
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                    toggleButton.BackgroundColor3 = library.base.Visible and Color3.fromRGB(40, 40, 50) or Color3.fromRGB(30, 30, 30)
-                end
-            end)
-        end
-    end)
-    
-    toggleButton.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement then
-            dragInput = input
-        end
-    end)
-    
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and input == dragInput then
-            local delta = input.Position - dragStart
-            toggleButton.Position = UDim2.new(
-                startPos.X.Scale,
-                startPos.X.Offset + delta.X,
-                startPos.Y.Scale,
-                startPos.Y.Offset + delta.Y
-            )
-        end
-    end)
-    
-    -- Click event for button
-    toggleButton.MouseButton1Click:Connect(function()
-        if not dragging then
-            toggleUIFunction()
-        end
-    end)
-    
-    -- Hover effects
-    toggleButton.MouseEnter:Connect(function()
-        if not dragging then
-            toggleButton.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
-        end
-    end)
-    
-    toggleButton.MouseLeave:Connect(function()
-        if not dragging then
-            toggleButton.BackgroundColor3 = library.base.Visible and Color3.fromRGB(40, 40, 50) or Color3.fromRGB(30, 30, 30)
-        end
-    end)
-    
-    -- Setup RSHIFT hotkey
-    UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if not gameProcessed and input.KeyCode == Enum.KeyCode.RightShift then
-            toggleUIFunction()
-        end
-    end)
-    
-    print("[FORGE SYSTEM] UI toggle button created (Press RSHIFT or click ⚡)")
-    print("[FORGE SYSTEM] Note: Button and RSHIFT do the same action")
-    return toggleUI
-end
-
-----------------------------------------------------------------
 -- UI MONITORING SYSTEM
 ----------------------------------------------------------------
 local function createUIMonitor()
     task.spawn(function()
-        while library and library.subs and library.subs.Wait(0.2) do
+        while task.wait(0.2) do
             if autoHammerRunning and flags.AutoHammerEnabled then
                 -- Check UI visibility
                 if not isMinigameVisible() or isMinigameTimerComplete() then
@@ -705,24 +663,13 @@ local function setupForgeSkip()
     end
 
     -- Create UI
-    createPepsiUI()
+    createWindUI()
     
     -- Start UI monitor
     createUIMonitor()
     
     -- Set default flags
     flags.AutoHammerEnabled = true
-    
-    -- Create toggle button after UI is loaded
-    task.spawn(function()
-        -- Tunggu library terload
-        while not library do
-            task.wait(1)
-        end
-        
-        task.wait(2) -- Tunggu sedikit lebih lama untuk pastikan UI selesai dibuat
-        createUIToggleButton()
-    end)
     
     -- Safety cleanup
     Players.LocalPlayer.AncestryChanged:Connect(function()
@@ -741,7 +688,6 @@ local function setupForgeSkip()
     print("[FORGE SYSTEM] Initialization complete")
     print("[FORGE SYSTEM] Default cooldown: " .. HAMMER_COOLDOWN .. "s")
     print("[FORGE SYSTEM] Use UI to configure settings")
-    print("[FORGE SYSTEM] Toggle UI with RSHIFT or the ⚡ button")
     print("========================================")
 end
 
