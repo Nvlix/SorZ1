@@ -184,7 +184,7 @@ local function hammerLoop()
         end
     end
     
-    debugLog("Hammer loop ended. Topal hits: " .. hammerCount)
+    debugLog("Hammer loop ended. Total hits: " .. hammerCount)
 end
 
 local function startAutoHammer()
@@ -365,19 +365,6 @@ local function toggleGUI()
     end
 end
 
--- Function to update minimize button icon
-local function updateMinimizeButtonIcon()
-    if minimizeBtn then
-        if guiVisible then
-            -- Change to minimize icon when GUI is visible
-            minimizeBtn.Icon = "minus"
-        else
-            -- Change to maximize icon when GUI is minimized
-            minimizeBtn.Icon = "maximize"
-        end
-    end
-end
-
 ----------------------------------------------------------------
 -- CREATE WINDUI WINDOW WITH OPEN BUTTON
 ----------------------------------------------------------------
@@ -448,8 +435,6 @@ local function createWindUI()
     
     -- Divider
     GeneralTab:Divider()
-    
-    -- Remove the old toggle GUI button since we'll use minimize button
     
     -- Toggles Section
     GeneralTab:Paragraph({
@@ -668,12 +653,12 @@ local function createWindUI()
     
     InfoTab:Paragraph({
         Title = "📖 Auto Forge System v1.0",
-        Desc = "Automatically skips forge minigames and hammers for you.\n\nFeatures:\n• Skip Melt minigame\n• Skip Pour minigame\n• Auto Hammer during hammer minigame\n• Adjustable hammer speed\n• Emergency stop\n• Debug mode\n• Minimize button (top-right)\n• Customizable open button\n\nBy JawirScript"
+        Desc = "Automatically skips forge minigames and hammers for you.\n\nFeatures:\n• Skip Melt minigame\n• Skip Pour minigame\n• Auto Hammer during hammer minigame\n• Adjustable hammer speed\n• Emergency stop\n• Debug mode\n• Minimize with RightControl key\n• Customizable open button\n\nBy JawirScript"
     })
     
     InfoTab:Paragraph({
         Title = "🔧 GUI Controls",
-        Desc = "• Press RightControl to minimize/maximize\n• Click minimize button (top-right)\n• Open button appears when minimized"
+        Desc = "• Press RightControl to minimize/maximize\n• Click open button to show GUI when minimized"
     })
     
     InfoTab:Button({
@@ -694,90 +679,18 @@ local function createWindUI()
         end
     })
     
-    -- Modify the existing minimize button to toggle GUI instead of closing
-    local function modifyMinimizeButton()
-        -- We'll create a custom minimize button since WindUI's built-in minimize closes the window
-        -- First, let's hide the default minimize button if possible
-        -- We'll create our own toggle button in the topbar
-        
-        -- Create a custom minimize/maximize toggle button
-        local topbarButtons = PepsiForgeWindow.TopBarButtons or {}
-        
-        -- Look for existing minimize button and modify it
-        for order, btn in pairs(topbarButtons) do
-            if btn.Name == "Minimize" then
-                -- Found the minimize button, store reference
-                minimizeBtn = btn.Object
-                print("[FORGE SYSTEM] Found existing minimize button")
-                
-                -- Update its callback to toggle instead of close
-                local originalClick = nil
-                
-                -- We need to find the click connection
-                for _, child in pairs(minimizeBtn:GetDescendants()) do
-                    if child:IsA("TextButton") then
-                        -- Disconnect existing connections
-                        for _, conn in pairs(getconnections(child.MouseButton1Click)) do
-                            conn:Disconnect()
-                        end
-                        
-                        -- Add new toggle functionality
-                        child.MouseButton1Click:Connect(function()
-                            toggleGUI()
-                            updateMinimizeButtonIcon()
-                        end)
-                    end
-                end
-                break
-            end
-        end
-        
-        -- If we couldn't find existing button, create a custom one
-        if not minimizeBtn then
-            print("[FORGE SYSTEM] Creating custom minimize button")
-            
-            -- Get the topbar right frame
-            local topbarRight = PepsiForgeWindow.UIElements and PepsiForgeWindow.UIElements.Main and 
-                              PepsiForgeWindow.UIElements.Main.Main and 
-                              PepsiForgeWindow.UIElements.Main.Main.Topbar and
-                              PepsiForgeWindow.UIElements.Main.Main.Topbar.Right
-                              
-            if topbarRight then
-                -- Create a new toggle button
-                local toggleButton = PepsiForgeWindow:CreateTopbarButton("Toggle", "minus", function()
-                    toggleGUI()
-                    updateMinimizeButtonIcon()
-                end, 998, nil, Color3.fromHex"#F4C948")
-                
-                minimizeBtn = {
-                    Object = toggleButton,
-                    Icon = "minus"
-                }
-            end
-        end
-        
-        -- Initialize button icon
-        updateMinimizeButtonIcon()
-    end
-    
     -- Setup keybind listener
     local function setupKeybindListener()
         UserInputService.InputBegan:Connect(function(input, gameProcessed)
             if not gameProcessed then
                 if input.KeyCode == Enum.KeyCode[toggleKeybind] then
                     toggleGUI()
-                    updateMinimizeButtonIcon()
                 end
             end
         end)
     end
     
-    -- Modify the minimize button after a short delay
-    task.spawn(function()
-        task.wait(1)
-        modifyMinimizeButton()
-        setupKeybindListener()
-    end)
+    setupKeybindListener()
     
     print("[FORGE SYSTEM] WindUI loaded successfully")
     return true
@@ -880,7 +793,7 @@ local function setupForgeSkip()
     -- Set default flags
     flags.AutoHammerEnabled = true
     
-    -- Safety cleanup
+    -- Safety cleanup - remove BindToClose since it's server-only
     Players.LocalPlayer.AncestryChanged:Connect(function()
         if not Players.LocalPlayer.Parent then
             print("[CLEANUP] Player leaving, stopping everything")
@@ -888,16 +801,25 @@ local function setupForgeSkip()
         end
     end)
     
-    -- Game close cleanup
-    game:BindToClose(function()
-        print("[SHUTDOWN] Game closing, stopping auto hammer")
-        stopAutoHammer()
-    end)
+    -- Alternative cleanup on game closing
+    local function setupCleanup()
+        -- Cleanup on script termination
+        local connection
+        connection = game:GetService("ScriptContext").ScriptDisconnected:Connect(function(script)
+            if script == script then
+                print("[SHUTDOWN] Script disconnected, stopping auto hammer")
+                stopAutoHammer()
+                connection:Disconnect()
+            end
+        end)
+    end
+    
+    setupCleanup()
     
     print("[FORGE SYSTEM] Initialization complete")
     print("[FORGE SYSTEM] Default cooldown: " .. HAMMER_COOLDOWN .. "s")
     print("[FORGE SYSTEM] GUI Toggle Key: " .. toggleKeybind)
-    print("[FORGE SYSTEM] Click minimize button (top-right) to toggle GUI")
+    print("[FORGE SYSTEM] Press RightControl to toggle GUI")
     print("========================================")
 end
 
