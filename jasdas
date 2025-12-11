@@ -1,0 +1,1115 @@
+-- ============================================================
+-- COMPLETE FORGE SYSTEM WITH AUTO TWEEN
+-- ============================================================
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+
+-- Modules
+local Knit
+local ForgeServiceRF, ProximityServiceRF
+
+-- Forge States
+local isHammerMinigameActive = false
+local autoHammerRunning = false
+local originalMinigames = {}
+local lastHammerTime = 0
+local HAMMER_COOLDOWN = 0.5
+local hammerTask = nil
+local stopRequested = false
+local debugMode = false
+local hammerMinigameUI = nil
+local minigameCompleteFlag = false
+
+-- Rock ESP States
+local ESPEnabled = false
+local ESPDistance = 300
+local ESPRefreshRate = 0.2
+local RockCache = {}
+local ESPObjects = {}
+local ESPConnection = nil
+
+-- Auto Tween States
+local AutoTweenEnabled = false
+local TweenCooldown = 60
+local IsTweening = false
+local LastTweenTime = 0
+local CurrentTarget = nil
+local TweenConnection = nil
+local TWEEN_SPEED = 2
+local SEARCH_RADIUS = 500
+local HEIGHT_OFFSET = 3
+
+-- WindUI
+local WindUI
+local MainWindow
+local flags = {}
+local guiVisible = true
+local toggleKeybind = "RightControl"
+
+-- Rock Configurations
+local RockConfigs = {
+    Pebble = {
+        Name = "Pebble",
+        Color = Color3.fromRGB(180, 160, 140),
+        SizeOffset = Vector3.new(0, 1.5, 0),
+        BillboardSize = UDim2.new(0, 60, 0, 30),
+        TextSize = 14,
+        ShowTracer = false,
+        Priority = 3,
+        Enabled = false
+    },
+    Rock = {
+        Name = "Rock",
+        Color = Color3.fromRGB(150, 120, 90),
+        SizeOffset = Vector3.new(0, 2, 0),
+        BillboardSize = UDim2.new(0, 80, 0, 40),
+        TextSize = 16,
+        ShowTracer = true,
+        Priority = 2,
+        Enabled = true
+    },
+    Boulder = {
+        Name = "Boulder",
+        Color = Color3.fromRGB(120, 85, 60),
+        SizeOffset = Vector3.new(0, 3, 0),
+        BillboardSize = UDim2.new(0, 100, 0, 50),
+        TextSize = 18,
+        ShowTracer = true,
+        Priority = 1,
+        Enabled = true
+    }
+}
+
+----------------------------------------------------------------
+-- WINDUI LOADER
+----------------------------------------------------------------
+local function loadUILibrary()
+    local success, lib = pcall(function()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+    end)
+    
+    if success then
+        WindUI = lib
+        return true
+    else
+        warn("[FORGE UI] Failed to load WindUI Library")
+        return false
+    end
+end
+
+----------------------------------------------------------------
+-- FORGE REMOTES
+----------------------------------------------------------------
+local function initializeRemotes()
+    local Packages = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Packages")
+    Knit = require(Packages.Knit)
+    
+    local Services = Packages.Knit.Services
+    ForgeServiceRF = Services.ForgeService.RF.ChangeSequence
+    ProximityServiceRF = Services.ProximityService.RF.Forge
+    
+    return ForgeServiceRF ~= nil
+end
+
+----------------------------------------------------------------
+-- DEBUG LOGGING
+----------------------------------------------------------------
+local function debugLog(message)
+    if debugMode then
+        print("[DEBUG] " .. message)
+    end
+end
+
+----------------------------------------------------------------
+-- FORGE MINIGAME FUNCTIONS
+----------------------------------------------------------------
+local function getHammerMinigameUI()
+    local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+    local forgeUI = playerGui:WaitForChild("Forge", 5)
+    if forgeUI then
+        return forgeUI:WaitForChild("HammerMinigame", 3)
+    end
+    return nil
+end
+
+local function isMinigameVisible()
+    hammerMinigameUI = getHammerMinigameUI()
+    if hammerMinigameUI then
+        return hammerMinigameUI.Visible
+    end
+    return false
+end
+
+local function isMinigameTimerComplete()
+    if not hammerMinigameUI then
+        hammerMinigameUI = getHammerMinigameUI()
+    end
+    
+    if hammerMinigameUI then
+        local timerBar = hammerMinigameUI:FindFirstChild("Timer")
+        if timerBar then
+            local bar = timerBar:FindFirstChild("Bar")
+            if bar then
+                return bar.Size.X.Scale >= 0.95
+            end
+        end
+    end
+    return false
+end
+
+----------------------------------------------------------------
+-- AUTO HAMMER ENGINE
+----------------------------------------------------------------
+local function hammerLoop()
+    debugLog("Hammer loop started")
+    local hammerCount = 0
+    local lastCheckTime = tick()
+    
+    while isHammerMinigameActive and autoHammerRunning and not stopRequested do
+        local currentTime = tick()
+        if currentTime - lastCheckTime > 0.5 then
+            if not isMinigameVisible() or isMinigameTimerComplete() then
+                debugLog("Minigame no longer active, stopping hammer")
+                stopRequested = true
+                break
+            end
+            lastCheckTime = currentTime
+        end
+        
+        local baseDelay = HAMMER_COOLDOWN
+        local randomVariation = math.random(-20, 30) / 100
+        local totalDelay = math.max(0.3, baseDelay + randomVariation)
+        
+        debugLog("Waiting " .. string.format("%.2f", totalDelay) .. "s before next hit")
+        
+        local startWait = tick()
+        while tick() - startWait < totalDelay do
+            if not isHammerMinigameActive or not autoHammerRunning or stopRequested then
+                debugLog("Breaking during wait")
+                return
+            end
+            task.wait(0.05)
+        end
+        
+        if not isHammerMinigameActive or not autoHammerRunning or stopRequested then
+            debugLog("Breaking before send")
+            return
+        end
+        
+        local success, result = pcall(function()
+            return ForgeServiceRF:InvokeServer(
+                "Hammer",
+                { 
+                    ClientTime = workspace:GetServerTimeNow(),
+                    RandomSeed = math.random(1, 1000)
+                }
+            )
+        end)
+        
+        if success then
+            hammerCount = hammerCount + 1
+            lastHammerTime = tick()
+            debugLog("Hammer hit #" .. hammerCount .. " sent successfully")
+            
+            if isMinigameTimerComplete() then
+                debugLog("Timer completed after hit #" .. hammerCount)
+                stopRequested = true
+                break
+            end
+        else
+            debugLog("Hammer hit failed: " .. tostring(result))
+        end
+    end
+    
+    debugLog("Hammer loop ended. Total hits: " .. hammerCount)
+end
+
+local function startAutoHammer()
+    if autoHammerRunning then
+        debugLog("Auto hammer already running")
+        return
+    end
+    
+    debugLog("Starting auto hammer system")
+    autoHammerRunning = true
+    stopRequested = false
+    minigameCompleteFlag = false
+    
+    if hammerTask then
+        task.cancel(hammerTask)
+        hammerTask = nil
+    end
+    
+    hammerTask = task.spawn(function()
+        hammerLoop()
+        autoHammerRunning = false
+        hammerTask = nil
+        debugLog("Auto hammer task cleaned up")
+    end)
+end
+
+local function stopAutoHammer()
+    debugLog("Stopping auto hammer requested")
+    stopRequested = true
+    autoHammerRunning = false
+    isHammerMinigameActive = false
+    minigameCompleteFlag = true
+    
+    if hammerTask then
+        task.cancel(hammerTask)
+        hammerTask = nil
+    end
+    
+    debugLog("Auto hammer fully stopped")
+end
+
+----------------------------------------------------------------
+-- MINIGAME HOOKING
+----------------------------------------------------------------
+local function hookMinigameModules()
+    local ForgeController = Knit.GetController("ForgeController")
+    if not ForgeController or not ForgeController.Minigames then
+        warn("[FORGE SKIP] Cannot find ForgeController minigames")
+        return false
+    end
+
+    print("[FORGE SKIP] Found ForgeController with minigames")
+
+    -- MELT
+    if ForgeController.Minigames.MeltMinigame then
+        originalMinigames.MeltStart = ForgeController.Minigames.MeltMinigame.Start
+
+        ForgeController.Minigames.MeltMinigame.Start = function(self, data)
+            print("[FORGE SKIP] Skipping Melt...")
+            local t = workspace:GetServerTimeNow()
+            task.wait(0.3)
+            print("[FORGE SKIP] Melt skipped!")
+            return t - 0.001
+        end
+    end
+
+    -- POUR
+    if ForgeController.Minigames.PourMinigame then
+        originalMinigames.PourStart = ForgeController.Minigames.PourMinigame.Start
+
+        ForgeController.Minigames.PourMinigame.Start = function(self, data)
+            print("[FORGE SKIP] Skipping Pour...")
+            local t = workspace:GetServerTimeNow()
+            task.wait(0.3)
+            print("[FORGE SKIP] Pour skipped!")
+            return t - 0.001
+        end
+    end
+
+    -- HAMMER
+    if ForgeController.Minigames.HammerMinigame then
+        local originalHammerStart = ForgeController.Minigames.HammerMinigame.Start
+        local originalHammerStop = ForgeController.Minigames.HammerMinigame.Stop
+        
+        hammerMinigameUI = getHammerMinigameUI()
+        
+        ForgeController.Minigames.HammerMinigame.Start = function(self, ...)
+            print("[FORGE HOOK] ===== HAMMER MINIGAME STARTED =====")
+            
+            isHammerMinigameActive = true
+            autoHammerRunning = false
+            stopRequested = false
+            minigameCompleteFlag = false
+            
+            hammerMinigameUI = getHammerMinigameUI()
+            
+            if flags.AutoHammerEnabled then
+                task.spawn(function()
+                    task.wait(0.5)
+                    if isMinigameVisible() then
+                        print("[FORGE HOOK] UI detected, starting auto hammer...")
+                        startAutoHammer()
+                    end
+                end)
+            end
+            
+            if originalHammerStart then
+                return originalHammerStart(self, ...)
+            end
+            return nil
+        end
+
+        ForgeController.Minigames.HammerMinigame.Stop = function(self, ...)
+            print("[FORGE HOOK] ===== HAMMER MINIGAME STOPPED =====")
+            stopAutoHammer()
+            
+            if originalHammerStop then
+                return originalHammerStop(self, ...)
+            end
+            return nil
+        end
+        
+        print("[FORGE HOOK] Hammer minigame hooks installed")
+    end
+
+    print("[FORGE SKIP] All minigames hooked successfully")
+    return true
+end
+
+----------------------------------------------------------------
+-- ROCK ESP FUNCTIONS
+----------------------------------------------------------------
+local function createRockESP(obj)
+    local parentName = obj.Parent.Name
+    local config = RockConfigs[parentName]
+    if not config or not config.Enabled then return nil end
+    
+    if ESPObjects[obj] then return nil
+    
+    local character = LocalPlayer.Character
+    local humanoidRootPart = character and character:FindFirstChild("HumanoidRootPart")
+    local distance = 0
+    
+    if humanoidRootPart then
+        distance = (obj.Position - humanoidRootPart.Position).Magnitude
+    end
+    
+    -- BillboardGui
+    local BillboardGui = Instance.new('BillboardGui')
+    BillboardGui.Name = "RockESP"
+    BillboardGui.Parent = obj
+    BillboardGui.AlwaysOnTop = true
+    BillboardGui.Size = config.BillboardSize
+    BillboardGui.StudsOffset = config.SizeOffset
+    BillboardGui.MaxDistance = ESPDistance
+    BillboardGui.Enabled = ESPEnabled
+    
+    -- Type Label
+    local TextLabel = Instance.new('TextLabel')
+    TextLabel.Name = "TypeLabel"
+    TextLabel.Parent = BillboardGui
+    TextLabel.BackgroundTransparency = 1
+    TextLabel.Size = UDim2.new(1, 0, 0.6, 0)
+    TextLabel.Position = UDim2.new(0, 0, 0, 0)
+    TextLabel.Text = config.Name
+    TextLabel.TextColor3 = config.Color
+    TextLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+    TextLabel.TextStrokeTransparency = 0.5
+    TextLabel.TextSize = config.TextSize
+    TextLabel.Font = Enum.Font.SourceSansBold
+    
+    -- Distance Label
+    local DistanceLabel = Instance.new('TextLabel')
+    DistanceLabel.Name = "DistanceLabel"
+    DistanceLabel.Parent = BillboardGui
+    DistanceLabel.BackgroundTransparency = 1
+    DistanceLabel.Size = UDim2.new(1, 0, 0.4, 0)
+    DistanceLabel.Position = UDim2.new(0, 0, 0.6, 0)
+    DistanceLabel.Text = string.format("%.1f studs", distance)
+    DistanceLabel.TextColor3 = Color3.new(1, 1, 1)
+    DistanceLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+    DistanceLabel.TextStrokeTransparency = 0.5
+    DistanceLabel.TextSize = config.TextSize - 2
+    DistanceLabel.Font = Enum.Font.SourceSans
+    
+    -- Highlight
+    local highlight = Instance.new("BoxHandleAdornment")
+    highlight.Name = "RockHighlight"
+    highlight.Adornee = obj
+    highlight.AlwaysOnTop = true
+    highlight.ZIndex = 10
+    highlight.Size = obj.Size + Vector3.new(0.3, 0.3, 0.3)
+    highlight.Color3 = config.Color
+    highlight.Transparency = 0.3
+    highlight.Visible = ESPEnabled
+    highlight.Parent = obj
+    
+    -- Tracer
+    local tracer = nil
+    if config.ShowTracer then
+        tracer = Instance.new("LineHandleAdornment")
+        tracer.Name = "RockTracer"
+        tracer.Adornee = obj
+        tracer.AlwaysOnTop = true
+        tracer.ZIndex = 5
+        tracer.Thickness = 2
+        tracer.Color3 = config.Color
+        tracer.Transparency = 0.4
+        tracer.Visible = ESPEnabled
+        tracer.Parent = obj
+    end
+    
+    -- Light
+    local pointLight = Instance.new("PointLight")
+    pointLight.Name = "RockGlow"
+    pointLight.Color = config.Color
+    pointLight.Brightness = 1.5
+    pointLight.Range = 15
+    pointLight.Enabled = ESPEnabled
+    pointLight.Shadows = false
+    pointLight.Parent = obj
+    
+    ESPObjects[obj] = {
+        Billboard = BillboardGui,
+        Highlight = highlight,
+        Tracer = tracer,
+        Light = pointLight,
+        Config = config,
+        LastUpdate = tick()
+    }
+    
+    print(string.format("[ROCK ESP] Created ESP for %s", config.Name))
+    return ESPObjects[obj]
+end
+
+local function updateRockESP(obj, espData)
+    if not obj or not obj.Parent then return false end
+    
+    local character = LocalPlayer.Character
+    local humanoidRootPart = character and character:FindFirstChild("HumanoidRootPart")
+    if not humanoidRootPart then return true end
+    
+    local distance = (obj.Position - humanoidRootPart.Position).Magnitude
+    
+    if espData.Billboard and espData.Billboard:FindFirstChild("DistanceLabel") then
+        espData.Billboard.DistanceLabel.Text = string.format("%.1f studs", distance)
+        
+        local hue = (tick() % 3) / 3
+        local baseColor = espData.Config.Color
+        
+        if distance < 20 then
+            espData.Billboard.TypeLabel.TextColor3 = Color3.new(0, 1, 0)
+        elseif distance < 50 then
+            espData.Billboard.TypeLabel.TextColor3 = Color3.fromHSV(hue, 1, 1)
+        elseif distance < 100 then
+            espData.Billboard.TypeLabel.TextColor3 = baseColor
+        else
+            espData.Billboard.TypeLabel.TextColor3 = Color3.new(
+                baseColor.R * 0.7,
+                baseColor.G * 0.7,
+                baseColor.B * 0.7
+            )
+        end
+        
+        if espData.Highlight then
+            espData.Highlight.Color3 = espData.Billboard.TypeLabel.TextColor3
+        end
+        
+        if espData.Tracer then
+            espData.Tracer.Color3 = espData.Billboard.TypeLabel.TextColor3
+            local camera = Workspace.CurrentCamera
+            if camera then
+                espData.Tracer.Length = (obj.Position - camera.CFrame.Position).Magnitude
+                espData.Tracer.CFrame = CFrame.lookAt(obj.Position, camera.CFrame.Position)
+            end
+        end
+        
+        if espData.Light then
+            espData.Light.Brightness = math.clamp(30 / distance, 0.5, 3)
+        end
+        
+        local shouldShow = distance <= ESPDistance
+        espData.Billboard.Enabled = ESPEnabled and shouldShow
+        espData.Highlight.Visible = ESPEnabled and shouldShow
+        if espData.Tracer then
+            espData.Tracer.Visible = ESPEnabled and shouldShow
+        end
+        espData.Light.Enabled = ESPEnabled and shouldShow
+    end
+    
+    espData.LastUpdate = tick()
+    return true
+end
+
+local function scanForRocks()
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA('Part') and obj.Parent and obj.Parent:IsA('Model') then
+            local parentName = obj.Parent.Name
+            if RockConfigs[parentName] then
+                if not ESPObjects[obj] then
+                    createRockESP(obj)
+                end
+            end
+        end
+    end
+end
+
+local function cleanupESP()
+    for obj, espData in pairs(ESPObjects) do
+        if not obj or not obj.Parent then
+            if espData.Billboard then espData.Billboard:Destroy() end
+            if espData.Highlight then espData.Highlight:Destroy() end
+            if espData.Tracer then espData.Tracer:Destroy() end
+            if espData.Light then espData.Light:Destroy() end
+            ESPObjects[obj] = nil
+        end
+    end
+end
+
+local function updateESP()
+    cleanupESP()
+    
+    for obj, espData in pairs(ESPObjects) do
+        if tick() - espData.LastUpdate >= ESPRefreshRate then
+            local stillExists = updateRockESP(obj, espData)
+            if not stillExists then
+                ESPObjects[obj] = nil
+            end
+        end
+    end
+    
+    if tick() - (ESPObjects.LastScan or 0) >= 1 then
+        scanForRocks()
+        ESPObjects.LastScan = tick()
+    end
+end
+
+local function toggleRockESP()
+    ESPEnabled = not ESPEnabled
+    
+    for obj, espData in pairs(ESPObjects) do
+        if espData.Billboard then
+            espData.Billboard.Enabled = ESPEnabled
+        end
+        if espData.Highlight then
+            espData.Highlight.Visible = ESPEnabled
+        end
+        if espData.Tracer then
+            espData.Tracer.Visible = ESPEnabled
+        end
+        if espData.Light then
+            espData.Light.Enabled = ESPEnabled
+        end
+    end
+    
+    if ESPEnabled then
+        if ESPConnection then
+            ESPConnection:Disconnect()
+        end
+        ESPConnection = RunService.Heartbeat:Connect(updateESP)
+        scanForRocks()
+        print("[ROCK ESP] Enabled")
+    else
+        if ESPConnection then
+            ESPConnection:Disconnect()
+            ESPConnection = nil
+        end
+        print("[ROCK ESP] Disabled")
+    end
+    
+    return ESPEnabled
+end
+
+local function setESPDistance(distance)
+    ESPDistance = math.clamp(distance, 10, 1000)
+    print("[ROCK ESP] Distance set to: " .. ESPDistance .. " studs")
+end
+
+----------------------------------------------------------------
+-- AUTO TWEEN FUNCTIONS
+----------------------------------------------------------------
+local function findNearestRock()
+    local character = LocalPlayer.Character
+    if not character then return nil end
+    
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    if not humanoidRootPart then return nil end
+    
+    local playerPosition = humanoidRootPart.Position
+    local nearestRock = nil
+    local nearestDistance = math.huge
+    
+    for obj, espData in pairs(ESPObjects) do
+        if obj and obj.Parent and RockConfigs[obj.Parent.Name] then
+            local config = RockConfigs[obj.Parent.Name]
+            if config.Enabled then
+                local distance = (playerPosition - obj.Position).Magnitude
+                
+                if distance <= SEARCH_RADIUS and distance < nearestDistance then
+                    nearestRock = {
+                        Object = obj,
+                        Type = obj.Parent.Name,
+                        Position = obj.Position,
+                        Distance = distance,
+                        Config = config
+                    }
+                    nearestDistance = distance
+                end
+            end
+        end
+    end
+    
+    return nearestRock, nearestDistance
+end
+
+local function tweenToRock(rockData)
+    if not rockData or not rockData.Position then return false end
+    
+    local character = LocalPlayer.Character
+    if not character then return false end
+    
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    if not humanoidRootPart then return false end
+    
+    print(string.format("[AUTO TWEEN] Tweening to %s at distance: %.1f", 
+          rockData.Type, rockData.Distance))
+    
+    IsTweening = true
+    CurrentTarget = rockData
+    
+    local targetPosition = rockData.Position + Vector3.new(0, HEIGHT_OFFSET, 0)
+    
+    local tweenInfo = TweenInfo.new(
+        TWEEN_SPEED,
+        Enum.EasingStyle.Quad,
+        Enum.EasingDirection.Out
+    )
+    
+    local tween = TweenService:Create(humanoidRootPart, tweenInfo, {
+        Position = targetPosition
+    })
+    
+    tween:Play()
+    tween.Completed:Wait()
+    task.wait(0.5)
+    
+    IsTweening = false
+    LastTweenTime = tick()
+    CurrentTarget = nil
+    
+    print("[AUTO TWEEN] Tween completed")
+    return true
+end
+
+local function startAutoTweenLoop()
+    if TweenConnection then
+        TweenConnection:Disconnect()
+        TweenConnection = nil
+    end
+    
+    TweenConnection = RunService.Heartbeat:Connect(function()
+        if not AutoTweenEnabled then return end
+        
+        local currentTime = tick()
+        if currentTime - LastTweenTime < TweenCooldown then
+            return
+        end
+        
+        if IsTweening then return end
+        
+        local nearestRock, distance = findNearestRock()
+        
+        if nearestRock then
+            print(string.format("[AUTO TWEEN] Found %s at %.1f studs", 
+                  nearestRock.Type, distance))
+            
+            local success = tweenToRock(nearestRock)
+            
+            if success then
+                print(string.format("[AUTO TWEEN] Next tween in %d seconds", TweenCooldown))
+            else
+                print("[AUTO TWEEN] Tween failed")
+            end
+        end
+    end)
+end
+
+local function toggleAutoTween()
+    AutoTweenEnabled = not AutoTweenEnabled
+    
+    if AutoTweenEnabled then
+        print("[AUTO TWEEN] Enabled")
+        startAutoTweenLoop()
+    else
+        print("[AUTO TWEEN] Disabled")
+        if TweenConnection then
+            TweenConnection:Disconnect()
+            TweenConnection = nil
+        end
+        IsTweening = false
+        CurrentTarget = nil
+    end
+    
+    return AutoTweenEnabled
+end
+
+local function setTweenCooldown(seconds)
+    TweenCooldown = math.max(5, seconds)
+    print("[AUTO TWEEN] Cooldown set to: " .. TweenCooldown .. " seconds")
+end
+
+local function setSearchRadius(radius)
+    SEARCH_RADIUS = math.max(10, math.min(2000, radius))
+    print("[AUTO TWEEN] Search radius set to: " .. SEARCH_RADIUS .. " studs")
+end
+
+local function setTweenSpeed(speed)
+    TWEEN_SPEED = math.max(0.5, math.min(10, speed))
+    print("[AUTO TWEEN] Tween speed set to: " .. TWEEN_SPEED .. " seconds")
+end
+
+local function setHeightOffset(offset)
+    HEIGHT_OFFSET = math.max(0, math.min(10, offset))
+    print("[AUTO TWEEN] Height offset set to: " .. HEIGHT_OFFSET .. " studs")
+end
+
+local function forceTweenToNearest()
+    if IsTweening then
+        print("[AUTO TWEEN] Already tweening, please wait...")
+        return false
+    end
+    
+    local nearestRock, distance = findNearestRock()
+    
+    if nearestRock then
+        print(string.format("[AUTO TWEEN] Force tweening to %s at %.1f studs", 
+              nearestRock.Type, distance))
+        
+        local success = tweenToRock(nearestRock)
+        
+        if success then
+            LastTweenTime = tick()
+            return true
+        else
+            print("[AUTO TWEEN] Force tween failed")
+            return false
+        end
+    else
+        print("[AUTO TWEEN] No rocks found to tween to")
+        return false
+    end
+end
+
+----------------------------------------------------------------
+-- GUI TOGGLE
+----------------------------------------------------------------
+local function toggleGUI()
+    if not MainWindow then return end
+    
+    if guiVisible then
+        MainWindow:Close()
+        if MainWindow.OpenButtonMain then
+            MainWindow.OpenButtonMain:Visible(true)
+        end
+        guiVisible = false
+        
+        if WindUI then
+            WindUI:Notify({
+                Title = "GUI",
+                Content = "GUI hidden",
+                Icon = "eye-off",
+                Duration = 1.5
+            })
+        end
+    else
+        MainWindow:Open()
+        if MainWindow.OpenButtonMain then
+            MainWindow.OpenButtonMain:Visible(false)
+        end
+        guiVisible = true
+        
+        if WindUI then
+            WindUI:Notify({
+                Title = "GUI",
+                Content = "GUI opened",
+                Icon = "eye",
+                Duration = 1.5
+            })
+        end
+    end
+    
+    print("[FORGE SYSTEM] GUI toggled: " .. (guiVisible and "VISIBLE" or "HIDDEN"))
+end
+
+----------------------------------------------------------------
+-- CREATE MAIN WINDOW
+----------------------------------------------------------------
+local function createMainWindow()
+    if not loadUILibrary() then
+        warn("[FORGE UI] Failed to load WindUI Library")
+        return nil
+    end
+    
+    -- Create main window
+    MainWindow = WindUI:CreateWindow({
+        Title = "JawirScript - Complete Forge",
+        Folder = "JawirScriptComplete",
+        Theme = "Dark",
+        Size = UDim2.new(0, 550, 0, 500),
+        Radius = 12,
+        Resizable = true,
+        Acrylic = true,
+        Background = Color3.fromRGB(30, 30, 35),
+        Author = "Complete Forge System",
+        ToggleKey = Enum.KeyCode.RightControl,
+        OpenButton = {
+            Title = "Forge System",
+            Icon = "hammer",
+            Enabled = true,
+            Position = UDim2.new(0, 10, 0.5, -50),
+            OnlyIcon = false,
+            Draggable = true,
+            Color = ColorSequence.new(
+                Color3.fromHex("#FF6B6B"),
+                Color3.fromHex("#4ECDC4")
+            )
+        }
+    })
+    
+    -- Setup callbacks
+    MainWindow:OnOpen(function()
+        if MainWindow.OpenButtonMain then
+            MainWindow.OpenButtonMain:Visible(false)
+        end
+        guiVisible = true
+        print("[FORGE SYSTEM] Window opened")
+    end)
+    
+    MainWindow:OnClose(function()
+        if MainWindow.OpenButtonMain then
+            MainWindow.OpenButtonMain:Visible(true)
+        end
+        guiVisible = false
+        print("[FORGE SYSTEM] Window closed")
+    end)
+    
+    -- Create tabs
+    local MainTab = MainWindow:Tab({
+        Title = "Main",
+        Desc = "Main Controls"
+    })
+    
+    local ForgeTab = MainWindow:Tab({
+        Title = "Forge",
+        Desc = "Forge Minigame Controls"
+    })
+    
+    local RockESPTab = MainWindow:Tab({
+        Title = "Rock ESP",
+        Desc = "Rock Finding System"
+    })
+    
+    local AutoTweenTab = MainWindow:Tab({
+        Title = "Auto Tween",
+        Desc = "Auto Teleport System"
+    })
+    
+    local SettingsTab = MainWindow:Tab({
+        Title = "Settings",
+        Desc = "System Settings"
+    })
+    
+    -- MAIN TAB CONTENT
+    MainTab:Paragraph({
+        Title = "⚙️ Complete Forge System",
+        Desc = "All-in-one forge automation system"
+    })
+    
+    MainTab:Button({
+        Title = "🔧 Activate All Hooks",
+        Desc = "Activate all systems",
+        Callback = function()
+            local forgeSuccess = hookMinigameModules()
+            local espSuccess = toggleRockESP()
+            
+            if forgeSuccess or espSuccess then
+                WindUI:Notify({
+                    Title = "Systems Activated",
+                    Content = "All systems activated successfully!",
+                    Icon = "check-circle",
+                    Duration = 3
+                })
+            end
+        end
+    })
+    
+    MainTab:Divider()
+    
+    MainTab:Button({
+        Title = "👁️ Toggle GUI",
+        Desc = "Show/Hide the GUI interface",
+        Callback = function()
+            toggleGUI()
+        end
+    })
+    
+    MainTab:Toggle({
+        Title = "🔍 Debug Mode",
+        Desc = "Enable debug logging",
+        Value = debugMode,
+        Callback = function(value)
+            debugMode = value
+            WindUI:Notify({
+                Title = "Debug Mode",
+                Content = value and "ENABLED" or "DISABLED",
+                Icon = value and "bug" or "bug-off",
+                Duration = 2
+            })
+        end
+    })
+    
+    -- FORGE TAB CONTENT
+    ForgeTab:Paragraph({
+        Title = "🔥 Forge Minigame",
+        Desc = "Auto skip minigames and hammer"
+    })
+    
+    ForgeTab:Button({
+        Title = "🔧 Activate Forge Hooks",
+        Desc = "Activate minigame hooks",
+        Callback = function()
+            local success = hookMinigameModules()
+            if success then
+                WindUI:Notify({
+                    Title = "Forge Hooks",
+                    Content = "Minigame hooks activated!",
+                    Icon = "check-circle",
+                    Duration = 3
+                })
+            end
+        end
+    })
+    
+    ForgeTab:Toggle({
+        Title = "🔨 Auto Hammer",
+        Desc = "Automatically hammer during minigame",
+        Value = flags.AutoHammerEnabled or true,
+        Callback = function(value)
+            flags.AutoHammerEnabled = value
+            WindUI:Notify({
+                Title = "Auto Hammer",
+                Content = value and "ENABLED" or "DISABLED",
+                Icon = value and "hammer" or "hammer-off",
+                Duration = 2
+            })
+        end
+    })
+    
+    ForgeTab:Toggle({
+        Title = "🔥 Skip Melt",
+        Desc = "Skip the melt minigame",
+        Value = flags.SkipMeltEnabled or true,
+        Callback = function(value)
+            flags.SkipMeltEnabled = value
+        end
+    })
+    
+    ForgeTab:Toggle({
+        Title = "💧 Skip Pour",
+        Desc = "Skip the pour minigame",
+        Value = flags.SkipPourEnabled or true,
+        Callback = function(value)
+            flags.SkipPourEnabled = value
+        end
+    })
+    
+    ForgeTab:Slider({
+        Title = "⚡ Hammer Speed",
+        Desc = "Delay between hammer hits",
+        Value = {Default = HAMMER_COOLDOWN, Min = 0.1, Max = 1.0, Step = 0.1},
+        Callback = function(value)
+            HAMMER_COOLDOWN = value
+            WindUI:Notify({
+                Title = "Hammer Speed",
+                Content = "Set to: " .. string.format("%.1f", value) .. "s",
+                Icon = "gauge",
+                Duration = 2
+            })
+        end
+    })
+    
+    -- ROCK ESP TAB CONTENT
+    RockESPTab:Paragraph({
+        Title = "🗿 Rock ESP System",
+        Desc = "Find rocks with visual ESP"
+    })
+    
+    RockESPTab:Toggle({
+        Title = "🎯 Enable Rock ESP",
+        Desc = "Toggle rock highlighting",
+        Value = ESPEnabled,
+        Callback = function(value)
+            ESPEnabled = toggleRockESP()
+            WindUI:Notify({
+                Title = "Rock ESP",
+                Content = ESPEnabled and "ENABLED" or "DISABLED",
+                Icon = ESPEnabled and "eye" or "eye-off",
+                Duration = 2
+            })
+        end
+    })
+    
+    RockESPTab:Slider({
+        Title = "📏 ESP Distance",
+        Desc = "Maximum distance to show rocks",
+        Value = {Default = ESPDistance, Min = 10, Max = 1000, Step = 10},
+        Callback = function(value)
+            setESPDistance(value)
+            WindUI:Notify({
+                Title = "ESP Distance",
+                Content = "Set to: " .. value .. " studs",
+                Icon = "ruler",
+                Duration = 2
+            })
+        end
+    })
+    
+    RockESPTab:Paragraph({
+        Title = "⚙️ Rock Filters",
+        Desc = "Select which rocks to show"
+    })
+    
+    RockESPTab:Toggle({
+        Title = "🪨 Boulder",
+        Desc = "Show large boulders",
+        Value = RockConfigs.Boulder.Enabled,
+        Callback = function(value)
+            RockConfigs.Boulder.Enabled = value
+            WindUI:Notify({
+                Title = "Boulder",
+                Content = value and "SHOWING" or "HIDDEN",
+                Icon = value and "mountain" or "mountain-off",
+                Duration = 1.5
+            })
+        end
+    })
+    
+    RockESPTab:Toggle({
+        Title = "🗿 Rock",
+        Desc = "Show medium rocks",
+        Value = RockConfigs.Rock.Enabled,
+        Callback = function(value)
+            RockConfigs.Rock.Enabled = value
+            WindUI:Notify({
+                Title = "Rock",
+                Content = value and "SHOWING" or "HIDDEN",
+                Icon = value and "circle" or "circle-off",
+                Duration = 1.5
+            })
+        end
+    })
+    
+    RockESPTab:Toggle({
+        Title = "🌑 Pebble",
+        Desc = "Show small pebbles",
+        Value = RockConfigs.Pebble.Enabled,
+        Callback = function(value)
+            RockConfigs.Pebble.Enabled = value
+            WindUI:Notify({
+                Title = "Pebble",
+                Content = value and "SHOWING" or "HIDDEN",
+                Icon = value and "circle-dot" or "circle-dot-off",
+                Duration = 1.5
+            })
+        end
+    })
+    
+    -- AUTO TWEEN TAB CONTENT
+    AutoTweenTab:Paragraph({
+        Title = "🚀 Auto Tween System",
+        Desc = "Automatically teleport to nearest rock"
+    })
+    
+    AutoTweenTab:Toggle({
+        Title = "⚡
