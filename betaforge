@@ -552,96 +552,78 @@ local function createFallbackUI()
 end
 
 ----------------------------------------------------------------
--- UI TOGGLE BUTTON (RSHIFT TRIGGER)
+-- UI TOGGLE BUTTON
 ----------------------------------------------------------------
 local function createUIToggleButton()
-    print("[FORGE SYSTEM] Creating RSHIFT trigger button...")
+    print("[FORGE SYSTEM] Creating UI toggle button...")
     
-    -- Create the button that acts as RSHIFT trigger
-    local triggerUI = Instance.new("ScreenGui")
-    triggerUI.Name = "ForgeRSHIFTTrigger"
-    triggerUI.DisplayOrder = 100
-    triggerUI.ResetOnSpawn = false
-    triggerUI.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+    -- Create the toggle button
+    local toggleUI = Instance.new("ScreenGui")
+    toggleUI.Name = "ForgeUIToggle"
+    toggleUI.DisplayOrder = 100
+    toggleUI.ResetOnSpawn = false
+    toggleUI.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
     
-    local triggerButton = Instance.new("TextButton")
-    triggerButton.Name = "RSHIFTButton"
-    triggerButton.Size = UDim2.new(0, 50, 0, 50)
-    triggerButton.Position = UDim2.new(1, -60, 0.5, -25)
-    triggerButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    triggerButton.BorderColor3 = Color3.fromRGB(60, 60, 60)
-    triggerButton.BorderSizePixel = 2
-    triggerButton.Text = "GUI"
-    triggerButton.TextColor3 = Color3.fromRGB(255, 200, 100)
-    triggerButton.TextSize = 12
-    triggerButton.Font = Enum.Font.Code
-    triggerButton.Parent = triggerUI
+    local toggleButton = Instance.new("TextButton")
+    toggleButton.Name = "ToggleButton"
+    toggleButton.Size = UDim2.new(0, 50, 0, 50)
+    toggleButton.Position = UDim2.new(1, -60, 0.5, -25)
+    toggleButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    toggleButton.BorderColor3 = Color3.fromRGB(60, 60, 60)
+    toggleButton.BorderSizePixel = 2
+    toggleButton.Text = "⚡"
+    toggleButton.TextColor3 = Color3.fromRGB(255, 200, 100)
+    toggleButton.TextSize = 20
+    toggleButton.Font = Enum.Font.Code
+    toggleButton.Parent = toggleUI
     
     -- Add rounded corners
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = triggerButton
+    corner.Parent = toggleButton
     
-    -- Function to simulate RSHIFT press
-    local function simulateRSHIFT()
-        -- Visual feedback
-        triggerButton.BackgroundColor3 = Color3.fromRGB(60, 60, 100)
-        triggerButton.Text = "PRESSING"
-        
-        -- Simulate RSHIFT key press
-        local rshiftEvent = Instance.new("RemoteEvent")
-        rshiftEvent.Name = "SimulateRSHIFT"
-        
-        -- Fire the key press
-        local keyCode = Enum.KeyCode.RightShift
-        local inputObject = {
-            KeyCode = keyCode,
-            UserInputType = Enum.UserInputType.Keyboard,
-            UserInputState = Enum.UserInputState.Begin
-        }
-        
-        -- Trigger the RSHIFT functionality
-        game:GetService("UserInputService").InputBegan:Fire(inputObject)
-        
-        -- Wait a bit for visual feedback
-        task.wait(0.1)
-        
-        -- Reset button
-        triggerButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-        triggerButton.Text = "GUI"
-        
-        print("[FORGE SYSTEM] RSHIFT button pressed (simulated RSHIFT key)")
+    -- Shared function untuk toggle UI (digunakan oleh RSHIFT dan button)
+    local function toggleUIFunction()
+        if library and library.base then
+            local isNowVisible = not library.base.Visible
+            library.base.Visible = isNowVisible
+            
+            -- Update button appearance
+            toggleButton.Text = isNowVisible and "⚡" or "🔧"
+            toggleButton.BackgroundColor3 = isNowVisible and Color3.fromRGB(40, 40, 50) or Color3.fromRGB(30, 30, 30)
+            
+            -- Animation feedback
+            toggleButton.Size = UDim2.new(0, 55, 0, 55)
+            task.wait(0.1)
+            toggleButton.Size = UDim2.new(0, 50, 0, 50)
+            
+            print("[FORGE SYSTEM] UI " .. (isNowVisible and "shown" or "hidden"))
+        end
     end
     
     -- Make button draggable
     local dragging = false
     local dragInput, dragStart, startPos
     
-    triggerButton.InputBegan:Connect(function(input)
+    toggleButton.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = true
             dragStart = input.Position
-            startPos = triggerButton.Position
+            startPos = toggleButton.Position
             
             -- Visual feedback
-            triggerButton.BackgroundColor3 = Color3.fromRGB(50, 50, 80)
+            toggleButton.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
             
             input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then
                     dragging = false
-                    triggerButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-                    
-                    -- Only simulate RSHIFT if not dragged much
-                    local delta = (input.Position - dragStart).Magnitude
-                    if delta < 10 then -- If dragged less than 10 pixels, count as click
-                        simulateRSHIFT()
-                    end
+                    toggleButton.BackgroundColor3 = library.base.Visible and Color3.fromRGB(40, 40, 50) or Color3.fromRGB(30, 30, 30)
                 end
             end)
         end
     end)
     
-    triggerButton.InputChanged:Connect(function(input)
+    toggleButton.InputChanged:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseMovement then
             dragInput = input
         end
@@ -650,7 +632,7 @@ local function createUIToggleButton()
     UserInputService.InputChanged:Connect(function(input)
         if dragging and input == dragInput then
             local delta = input.Position - dragStart
-            triggerButton.Position = UDim2.new(
+            toggleButton.Position = UDim2.new(
                 startPos.X.Scale,
                 startPos.X.Offset + delta.X,
                 startPos.Y.Scale,
@@ -659,28 +641,36 @@ local function createUIToggleButton()
         end
     end)
     
-    -- Click event for button (only if not dragging)
-    triggerButton.MouseButton1Click:Connect(function()
+    -- Click event for button
+    toggleButton.MouseButton1Click:Connect(function()
         if not dragging then
-            simulateRSHIFT()
+            toggleUIFunction()
         end
     end)
     
     -- Hover effects
-    triggerButton.MouseEnter:Connect(function()
+    toggleButton.MouseEnter:Connect(function()
         if not dragging then
-            triggerButton.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+            toggleButton.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
         end
     end)
     
-    triggerButton.MouseLeave:Connect(function()
+    toggleButton.MouseLeave:Connect(function()
         if not dragging then
-            triggerButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+            toggleButton.BackgroundColor3 = library.base.Visible and Color3.fromRGB(40, 40, 50) or Color3.fromRGB(30, 30, 30)
         end
     end)
     
-    print("[FORGE SYSTEM] RSHIFT trigger button created")
-    return triggerUI
+    -- Setup RSHIFT hotkey
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if not gameProcessed and input.KeyCode == Enum.KeyCode.RightShift then
+            toggleUIFunction()
+        end
+    end)
+    
+    print("[FORGE SYSTEM] UI toggle button created (Press RSHIFT or click ⚡)")
+    print("[FORGE SYSTEM] Note: Button and RSHIFT do the same action")
+    return toggleUI
 end
 
 ----------------------------------------------------------------
@@ -694,28 +684,6 @@ local function createUIMonitor()
                 if not isMinigameVisible() or isMinigameTimerComplete() then
                     debugLog("UI disappeared or timer complete, stopping hammer")
                     stopAutoHammer()
-                end
-            end
-        end
-    end)
-end
-
-----------------------------------------------------------------
--- RSHIFT HOTKEY HANDLER
-----------------------------------------------------------------
-local function setupRSHIFTHotkey()
-    UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if not gameProcessed and input.KeyCode == Enum.KeyCode.RightShift then
-            if library and library.base then
-                -- Toggle UI visibility
-                library.base.Visible = not library.base.Visible
-                print("[FORGE SYSTEM] RSHIFT pressed - UI " .. (library.base.Visible and "shown" or "hidden"))
-                
-                -- Visual feedback
-                if library.base.Visible then
-                    library.base.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-                    task.wait(0.05)
-                    library.base.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
                 end
             end
         end
@@ -742,13 +710,10 @@ local function setupForgeSkip()
     -- Start UI monitor
     createUIMonitor()
     
-    -- Setup RSHIFT hotkey
-    setupRSHIFTHotkey()
-    
     -- Set default flags
     flags.AutoHammerEnabled = true
     
-    -- Create RSHIFT trigger button after UI is loaded
+    -- Create toggle button after UI is loaded
     task.spawn(function()
         -- Tunggu library terload
         while not library do
@@ -776,7 +741,7 @@ local function setupForgeSkip()
     print("[FORGE SYSTEM] Initialization complete")
     print("[FORGE SYSTEM] Default cooldown: " .. HAMMER_COOLDOWN .. "s")
     print("[FORGE SYSTEM] Use UI to configure settings")
-    print("[FORGE SYSTEM] Toggle UI with RSHIFT key or click RSHIFT button")
+    print("[FORGE SYSTEM] Toggle UI with RSHIFT or the ⚡ button")
     print("========================================")
 end
 
