@@ -43,9 +43,10 @@ local IsTweening = false
 local LastTweenTime = 0
 local CurrentTarget = nil
 local TweenConnection = nil
-local TWEEN_SPEED = 2
+local TWEEN_SPEED = 1.5
 local SEARCH_RADIUS = 500
-local HEIGHT_OFFSET = 3
+local HEIGHT_OFFSET = 5
+local SAFE_TELEPORT = true
 
 -- GUI STATE
 local guiVisible = true
@@ -611,7 +612,7 @@ local function setESPUpdateInterval(interval)
 end
 
 ----------------------------------------------------------------
--- ==================== AUTO TWEEN ===========================
+-- ==================== AUTO TWEEN (FIXED) =====================
 ----------------------------------------------------------------
 
 local function getRocksData()
@@ -667,6 +668,25 @@ local function findNearestRock()
     return nearestRock, nearestDistance
 end
 
+-- METODE 1: Teleport langsung (CFrame)
+local function teleportDirect(position)
+    local character = LocalPlayer.Character
+    if not character then return false end
+    
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    if not humanoidRootPart then return false end
+    
+    -- Simpan rotasi saat ini
+    local currentCFrame = humanoidRootPart.CFrame
+    local newCFrame = CFrame.new(position) * CFrame.Angles(0, currentCFrame.Rotation.Y, 0)
+    
+    -- Set CFrame langsung
+    humanoidRootPart.CFrame = newCFrame
+    
+    return true
+end
+
+-- METODE 2: Tween yang benar (dengan NetworkOwnership)
 local function tweenToRock(rockData)
     if not rockData or not rockData.Position then return false end
     
@@ -676,33 +696,62 @@ local function tweenToRock(rockData)
     local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
     if not humanoidRootPart then return false end
     
-    debugLog("TWEEN", "Tweening to " .. rockData.Type .. " at distance: " .. string.format("%.1f", rockData.Distance or 0))
+    debugLog("TWEEN", "Teleporting to " .. rockData.Type .. " at distance: " .. string.format("%.1f", rockData.Distance or 0))
     
     IsTweening = true
     CurrentTarget = rockData
     
+    -- Hitung posisi target (di atas batu)
     local targetPosition = rockData.Position + Vector3.new(0, HEIGHT_OFFSET, 0)
     
-    local tweenInfo = TweenInfo.new(
-        TWEEN_SPEED,
-        Enum.EasingStyle.Quad,
-        Enum.EasingDirection.Out
-    )
-    
-    local tween = TweenService:Create(humanoidRootPart, tweenInfo, {
-        Position = targetPosition
-    })
-    
-    tween:Play()
-    tween.Completed:Wait()
-    
-    task.wait(0.5)
+    -- Gunakan metode teleport langsung jika SAFE_TELEPORT = true
+    if SAFE_TELEPORT then
+        -- Teleport langsung
+        local success = teleportDirect(targetPosition)
+        
+        if success then
+            task.wait(0.3) -- Tunggu sebentar untuk stabilisasi
+        end
+    else
+        -- Atur network ownership dulu
+        humanoidRootPart:SetNetworkOwner(nil)
+        
+        -- Buat tween info
+        local tweenInfo = TweenInfo.new(
+            TWEEN_SPEED,
+            Enum.EasingStyle.Linear,
+            Enum.EasingDirection.Out
+        )
+        
+        -- Buat tween
+        local tween = TweenService:Create(humanoidRootPart, tweenInfo, {
+            CFrame = CFrame.new(targetPosition)
+        })
+        
+        -- Mulai tween
+        tween:Play()
+        
+        -- Tunggu tween selesai
+        local tweenCompleted = false
+        tween.Completed:Connect(function()
+            tweenCompleted = true
+        end)
+        
+        -- Timeout untuk tween
+        local startTime = tick()
+        while not tweenCompleted and tick() - startTime < TWEEN_SPEED + 1 do
+            task.wait(0.1)
+        end
+        
+        -- Kembalikan network ownership
+        humanoidRootPart:SetNetworkOwner(LocalPlayer)
+    end
     
     IsTweening = false
     LastTweenTime = tick()
     CurrentTarget = nil
     
-    debugLog("TWEEN", "Tween completed")
+    debugLog("TWEEN", "Teleport completed")
     return true
 end
 
@@ -730,9 +779,9 @@ local function startAutoTweenLoop()
             local success = tweenToRock(nearestRock)
             
             if success then
-                debugLog("TWEEN", "Successfully tweened to " .. nearestRock.Type)
+                debugLog("TWEEN", "Successfully teleported to " .. nearestRock.Type)
             else
-                debugLog("TWEEN", "Tween failed")
+                debugLog("TWEEN", "Teleport failed")
             end
         end
     end)
@@ -772,6 +821,11 @@ local function setTweenSpeed(speed)
     debugLog("TWEEN", "Tween speed set to: " .. TWEEN_SPEED .. " seconds")
 end
 
+local function setSafeTeleport(enabled)
+    SAFE_TELEPORT = enabled
+    debugLog("TWEEN", "Safe teleport: " .. (enabled and "ENABLED" or "DISABLED"))
+end
+
 local function forceTweenToNearest()
     if IsTweening then
         debugLog("TWEEN", "Already tweening, please wait...")
@@ -781,7 +835,7 @@ local function forceTweenToNearest()
     local nearestRock, distance = findNearestRock()
     
     if nearestRock then
-        debugLog("TWEEN", "Force tweening to " .. nearestRock.Type .. " at " .. string.format("%.1f", distance) .. " studs")
+        debugLog("TWEEN", "Force teleporting to " .. nearestRock.Type .. " at " .. string.format("%.1f", distance) .. " studs")
         
         local success = tweenToRock(nearestRock)
         
@@ -789,11 +843,11 @@ local function forceTweenToNearest()
             LastTweenTime = tick()
             return true
         else
-            debugLog("TWEEN", "Force tween failed")
+            debugLog("TWEEN", "Force teleport failed")
             return false
         end
     else
-        debugLog("TWEEN", "No rocks found to tween to")
+        debugLog("TWEEN", "No rocks found to teleport to")
         return false
     end
 end
@@ -850,12 +904,12 @@ local function createMainWindow()
         Title = "JawirScript - Auto Forge System",
         Folder = "JawirScriptForgeSystem",
         Theme = "Dark",
-        Size = UDim2.new(0, 550, 0, 600),
+        Size = UDim2.new(0, 600, 0, 650),
         Radius = 12,
         Resizable = true,
         Acrylic = true,
         Background = Color3.fromRGB(30, 30, 35),
-        Author = "Auto Forge + Rock ESP + Tween",
+        Author = "Auto Forge + Rock ESP + Teleport",
         ToggleKey = Enum.KeyCode.RightControl,
         OpenButton = {
             Title = "Auto Forge System",
@@ -977,6 +1031,20 @@ local function createMainWindow()
         end
     })
     
+    ForgeTab:Button({
+        Title = "🛑 Stop Hammer",
+        Desc = "Stop auto hammer immediately",
+        Callback = function()
+            stopAutoHammer()
+            WindUI:Notify({
+                Title = "Hammer Stopped",
+                Content = "Auto hammer stopped",
+                Icon = "stop-circle",
+                Duration = 1.5
+            })
+        end
+    })
+    
     -- Tab 2: Rock ESP
     local RockTab = MainWindow:Tab({
         Title = "🗿 Rock ESP",
@@ -1048,25 +1116,40 @@ local function createMainWindow()
         end
     })
     
-    -- Tab 3: Auto Tween
-    local TweenTab = MainWindow:Tab({
-        Title = "🚀 Auto Tween",
+    RockTab:Slider({
+        Title = "⏱️ Update Speed",
+        Desc = "ESP update frequency",
+        Value = {Default = ESPUpdateInterval, Min = 0.05, Max = 2.0, Step = 0.05},
+        Callback = function(value)
+            setESPUpdateInterval(value)
+            WindUI:Notify({
+                Title = "Update Speed",
+                Content = "Set to: " .. string.format("%.2f", value) .. " seconds",
+                Icon = "refresh-cw",
+                Duration = 1.5
+            })
+        end
+    })
+    
+    -- Tab 3: Auto Teleport
+    local TeleportTab = MainWindow:Tab({
+        Title = "🚀 Teleport",
         Desc = "Auto Teleport Settings"
     })
     
-    TweenTab:Paragraph({
-        Title = "🚀 Auto Rock Tween",
+    TeleportTab:Paragraph({
+        Title = "🚀 Auto Rock Teleport",
         Desc = "Automatically teleport to nearest rock"
     })
     
-    TweenTab:Toggle({
-        Title = "⚡ Enable Auto Tween",
-        Desc = "Toggle automatic tweening to rocks",
+    TeleportTab:Toggle({
+        Title = "⚡ Enable Auto Teleport",
+        Desc = "Toggle automatic teleporting to rocks",
         Value = AutoTweenEnabled,
         Callback = function(value)
             AutoTweenEnabled = toggleAutoTween()
             WindUI:Notify({
-                Title = "Auto Tween",
+                Title = "Auto Teleport",
                 Content = AutoTweenEnabled and "ENABLED" or "DISABLED",
                 Icon = AutoTweenEnabled and "navigation" or "navigation-off",
                 Duration = 2
@@ -1074,9 +1157,24 @@ local function createMainWindow()
         end
     })
     
-    TweenTab:Slider({
-        Title = "⏰ Tween Cooldown",
-        Desc = "Time between auto tweens",
+    TeleportTab:Toggle({
+        Title = "🛡️ Safe Teleport",
+        Desc = "Use direct teleport (more stable)",
+        Value = SAFE_TELEPORT,
+        Callback = function(value)
+            setSafeTeleport(value)
+            WindUI:Notify({
+                Title = "Safe Teleport",
+                Content = value and "ENABLED" or "DISABLED",
+                Icon = value and "shield" or "shield-off",
+                Duration = 1.5
+            })
+        end
+    })
+    
+    TeleportTab:Slider({
+        Title = "⏰ Teleport Cooldown",
+        Desc = "Time between auto teleports",
         Value = {Default = TweenCooldown, Min = 5, Max = 300, Step = 5},
         Callback = function(value)
             setTweenCooldown(value)
@@ -1089,7 +1187,7 @@ local function createMainWindow()
         end
     })
     
-    TweenTab:Slider({
+    TeleportTab:Slider({
         Title = "📏 Search Radius",
         Desc = "Maximum distance to search for rocks",
         Value = {Default = SEARCH_RADIUS, Min = 10, Max = 2000, Step = 10},
@@ -1104,14 +1202,14 @@ local function createMainWindow()
         end
     })
     
-    TweenTab:Slider({
-        Title = "⚡ Tween Speed",
+    TeleportTab:Slider({
+        Title = "⚡ Teleport Speed",
         Desc = "Speed of teleport animation",
-        Value = {Default = TWEEN_SPEED, Min = 0.5, Max = 10, Step = 0.5},
+        Value = {Default = TWEEN_SPEED, Min = 0.1, Max = 5, Step = 0.1},
         Callback = function(value)
             setTweenSpeed(value)
             WindUI:Notify({
-                Title = "Tween Speed",
+                Title = "Teleport Speed",
                 Content = "Set to: " .. value .. " seconds",
                 Icon = "gauge",
                 Duration = 2
@@ -1119,18 +1217,53 @@ local function createMainWindow()
         end
     })
     
-    TweenTab:Divider()
+    TeleportTab:Slider({
+        Title = "📐 Height Offset",
+        Desc = "Height above rock to teleport to",
+        Value = {Default = HEIGHT_OFFSET, Min = 0, Max = 15, Step = 0.5},
+        Callback = function(value)
+            HEIGHT_OFFSET = value
+            WindUI:Notify({
+                Title = "Height Offset",
+                Content = "Set to: " .. value .. " studs",
+                Icon = "move-vertical",
+                Duration = 1.5
+            })
+        end
+    })
     
-    TweenTab:Button({
-        Title = "🎯 Force Tween",
-        Desc = "Immediately tween to nearest rock",
+    TeleportTab:Divider()
+    
+    TeleportTab:Paragraph({
+        Title = "🕹️ Manual Control",
+        Desc = "Manual teleport controls"
+    })
+    
+    TeleportTab:Button({
+        Title = "🎯 Teleport to Nearest",
+        Desc = "Immediately teleport to nearest rock",
         Callback = function()
             local success = forceTweenToNearest()
             WindUI:Notify({
-                Title = "Manual Tween",
+                Title = "Manual Teleport",
                 Content = success and "SUCCESS" or "FAILED",
                 Icon = success and "check-circle" or "x-circle",
                 Duration = 2
+            })
+        end
+    })
+    
+    TeleportTab:Button({
+        Title = "🛑 Stop Teleport",
+        Desc = "Stop current teleport",
+        Callback = function()
+            IsTweening = false
+            CurrentTarget = nil
+            WindUI:Notify({
+                Title = "Teleport Stopped",
+                Content = "Current teleport stopped",
+                Icon = "stop-circle",
+                Duration = 1.5
             })
         end
     })
@@ -1176,17 +1309,73 @@ local function createMainWindow()
         end
     })
     
-    SettingsTab:Slider({
-        Title = "📐 Tween Height",
-        Desc = "Height above rock to tween to",
-        Value = {Default = HEIGHT_OFFSET, Min = 0, Max = 10, Step = 0.5},
+    SettingsTab:Dropdown({
+        Title = "Open Button Style",
+        Desc = "Style of the open button",
+        Value = "Full",
+        Values = {"Full", "Icon Only", "Text Only"},
         Callback = function(value)
-            HEIGHT_OFFSET = value
+            if MainWindow then
+                local config = {
+                    OnlyIcon = value == "Icon Only"
+                }
+                MainWindow:EditOpenButton(config)
+                WindUI:Notify({
+                    Title = "Button Style",
+                    Content = "Changed to: " .. value,
+                    Icon = "layout",
+                    Duration = 2
+                })
+            end
+        end
+    })
+    
+    SettingsTab:Paragraph({
+        Title = "🎯 Rock Type Filter",
+        Desc = "Select which rocks to target"
+    })
+    
+    SettingsTab:Toggle({
+        Title = "🪨 Boulder",
+        Desc = "Target boulders",
+        Value = true,
+        Callback = function(value)
+            flags.BoulderEnabled = value
             WindUI:Notify({
-                Title = "Height Offset",
-                Content = "Set to: " .. value .. " studs",
-                Icon = "move-vertical",
-                Duration = 2
+                Title = "Boulder",
+                Content = value and "INCLUDED" or "EXCLUDED",
+                Icon = value and "mountain" or "mountain-off",
+                Duration = 1.5
+            })
+        end
+    })
+    
+    SettingsTab:Toggle({
+        Title = "🗿 Rock",
+        Desc = "Target rocks",
+        Value = true,
+        Callback = function(value)
+            flags.RockEnabled = value
+            WindUI:Notify({
+                Title = "Rock",
+                Content = value and "INCLUDED" or "EXCLUDED",
+                Icon = value and "circle" or "circle-off",
+                Duration = 1.5
+            })
+        end
+    })
+    
+    SettingsTab:Toggle({
+        Title = "🌑 Pebble",
+        Desc = "Target pebbles",
+        Value = false,
+        Callback = function(value)
+            flags.PebbleEnabled = value
+            WindUI:Notify({
+                Title = "Pebble",
+                Content = value and "INCLUDED" or "EXCLUDED",
+                Icon = value and "circle-dot" or "circle-dot-off",
+                Duration = 1.5
             })
         end
     })
@@ -1202,18 +1391,23 @@ local function createMainWindow()
             statusText = statusText .. "🔧 FORGE SYSTEM:\n"
             statusText = statusText .. "   Minigame Active: " .. tostring(isHammerMinigameActive) .. "\n"
             statusText = statusText .. "   Auto Hammer: " .. tostring(autoHammerRunning) .. "\n"
-            statusText = statusText .. "   Cooldown: " .. string.format("%.1f", HAMMER_COOLDOWN) .. "s\n\n"
+            statusText = statusText .. "   Cooldown: " .. string.format("%.1f", HAMMER_COOLDOWN) .. "s\n"
+            statusText = statusText .. "   Hooks Active: " .. (originalMinigames.MeltStart and "YES" or "NO") .. "\n\n"
             
             statusText = statusText .. "🗿 ROCK ESP:\n"
             statusText = statusText .. "   Enabled: " .. tostring(ESPEnabled) .. "\n"
             statusText = statusText .. "   Rocks Found: " .. espCount .. "\n"
-            statusText = statusText .. "   Distance: " .. ESPDistance .. " studs\n\n"
+            statusText = statusText .. "   Distance: " .. ESPDistance .. " studs\n"
+            statusText = statusText .. "   Update Interval: " .. string.format("%.2f", ESPUpdateInterval) .. "s\n\n"
             
-            statusText = statusText .. "🚀 AUTO TWEEN:\n"
+            statusText = statusText .. "🚀 AUTO TELEPORT:\n"
             statusText = statusText .. "   Enabled: " .. tostring(AutoTweenEnabled) .. "\n"
-            statusText = statusText .. "   Is Tweening: " .. tostring(IsTweening) .. "\n"
+            statusText = statusText .. "   Is Teleporting: " .. tostring(IsTweening) .. "\n"
             statusText = statusText .. "   Cooldown: " .. TweenCooldown .. "s\n"
-            statusText = statusText .. "   Search Radius: " .. SEARCH_RADIUS .. " studs\n\n"
+            statusText = statusText .. "   Search Radius: " .. SEARCH_RADIUS .. " studs\n"
+            statusText = statusText .. "   Teleport Speed: " .. TWEEN_SPEED .. "s\n"
+            statusText = statusText .. "   Height Offset: " .. HEIGHT_OFFSET .. " studs\n"
+            statusText = statusText .. "   Safe Mode: " .. tostring(SAFE_TELEPORT) .. "\n\n"
             
             statusText = statusText .. "🎮 GUI:\n"
             statusText = statusText .. "   Visible: " .. tostring(guiVisible) .. "\n"
@@ -1280,13 +1474,18 @@ local function createMainWindow()
     })
     
     InfoTab:Paragraph({
-        Title = "📖 JawirScript Auto Forge System v2.0",
+        Title = "📖 JawirScript Auto Forge System v2.1",
         Desc = "Complete system for automating forge gameplay\n\nFeatures:\n• Auto skip melt minigame\n• Auto skip pour minigame\n• Auto hammer during hammer minigame\n• Rock ESP with distance display\n• Auto teleport to nearest rock\n• Adjustable cooldowns\n• Emergency stop\n• Debug mode\n• Modern WindUI interface"
     })
     
     InfoTab:Paragraph({
         Title = "🎮 Controls",
-        Desc = "• Press RightControl to toggle GUI\n• Use tabs to switch between features\n• Configure each system individually\n• Use emergency stop if needed"
+        Desc = "• Press RightControl to toggle GUI\n• Use tabs to switch between features\n• Configure each system individually\n• Use emergency stop if needed\n• Enable Safe Teleport for stability"
+    })
+    
+    InfoTab:Paragraph({
+        Title = "🚀 Teleport Notes",
+        Desc = "• Safe Teleport mode uses direct CFrame\n• Height offset prevents getting stuck\n• Cooldown prevents spam detection\n• Search radius limits teleport range\n• Teleport speed affects animation"
     })
     
     InfoTab:Button({
@@ -1295,7 +1494,7 @@ local function createMainWindow()
         Callback = function()
             WindUI:Dialog({
                 Title = "⚠️ Safety Warning",
-                Content = "Important Safety Information:\n\n• Use at your own risk\n• May be detected by anti-cheat\n• Keep cooldowns reasonable\n• Don't use in populated areas\n• Test in safe area first\n• Monitor system performance",
+                Content = "Important Safety Information:\n\n• Use at your own risk\n• May be detected by anti-cheat\n• Keep cooldowns reasonable (30s+)\n• Don't use in populated areas\n• Height offset prevents getting stuck\n• Always test in safe area first\n• Safe Teleport mode is more stable",
                 Icon = "alert-triangle",
                 Buttons = {
                     {
@@ -1311,6 +1510,9 @@ local function createMainWindow()
     flags.AutoHammerEnabled = true
     flags.SkipMeltEnabled = true
     flags.SkipPourEnabled = true
+    flags.BoulderEnabled = true
+    flags.RockEnabled = true
+    flags.PebbleEnabled = false
     
     return MainWindow
 end
@@ -1382,7 +1584,9 @@ end
 
 local function initializeSystem()
     print("========================================")
-    print("JAWIRSCRIPT AUTO FORGE SYSTEM v2.0")
+    print("JAWIRSCRIPT AUTO FORGE SYSTEM v2.1")
+    print("========================================")
+    print("Features: Forge Skip + Rock ESP + Teleport")
     print("========================================")
     
     local remoteSuccess = initializeRemotes()
@@ -1413,6 +1617,8 @@ local function initializeSystem()
     
     print("[SYSTEM] Initialization complete")
     print("[SYSTEM] Press " .. toggleKeybind .. " to toggle GUI")
+    print("[SYSTEM] Safe Teleport: " .. tostring(SAFE_TELEPORT))
+    print("[SYSTEM] Teleport Cooldown: " .. TweenCooldown .. "s")
     print("========================================")
 end
 
@@ -1439,11 +1645,12 @@ return {
     ScanRocks = handleExistingObjects,
     ClearESP = cleanupESP,
     
-    -- Auto Tween
-    ToggleAutoTween = toggleAutoTween,
-    SetTweenCooldown = setTweenCooldown,
+    -- Auto Teleport
+    ToggleAutoTeleport = toggleAutoTween,
+    SetTeleportCooldown = setTweenCooldown,
     SetSearchRadius = setSearchRadius,
-    ForceTween = forceTweenToNearest,
+    ForceTeleport = forceTweenToNearest,
+    SetSafeTeleport = setSafeTeleport,
     
     -- GUI
     ToggleGUI = toggleGUI,
@@ -1458,18 +1665,24 @@ return {
             Forge = {
                 MinigameActive = isHammerMinigameActive,
                 AutoHammerRunning = autoHammerRunning,
-                HammerCooldown = HAMMER_COOLDOWN
+                HammerCooldown = HAMMER_COOLDOWN,
+                HooksActive = originalMinigames.MeltStart ~= nil
             },
             ESP = {
                 Enabled = ESPEnabled,
                 Distance = ESPDistance,
-                RockCount = espCount
+                RockCount = espCount,
+                UpdateInterval = ESPUpdateInterval
             },
-            Tween = {
+            Teleport = {
                 Enabled = AutoTweenEnabled,
-                IsTweening = IsTweening,
+                IsTeleporting = IsTweening,
                 Cooldown = TweenCooldown,
-                SearchRadius = SEARCH_RADIUS
+                SearchRadius = SEARCH_RADIUS,
+                Speed = TWEEN_SPEED,
+                HeightOffset = HEIGHT_OFFSET,
+                SafeMode = SAFE_TELEPORT,
+                TimeSinceLast = tick() - LastTweenTime
             },
             GUI = {
                 Visible = guiVisible,
