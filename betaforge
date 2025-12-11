@@ -6,7 +6,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
 local Knit
 
 -- Remote references
@@ -34,8 +33,8 @@ local flags = {}
 
 -- GUI Toggle State
 local guiVisible = true
-local toggleKeybind = "RightControl"
 local openButton
+local toggleKeybind = "RightControl" -- Default toggle key
 
 ----------------------------------------------------------------
 -- LOAD WINDUI LIBRARY
@@ -331,131 +330,42 @@ local function hookMinigameModules()
 end
 
 ----------------------------------------------------------------
--- CREATE SIMPLE OPEN BUTTON (Always visible in top-left corner)
-----------------------------------------------------------------
-local function createOpenButton()
-    local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
-    
-    -- Create button frame
-    local buttonFrame = Instance.new("Frame")
-    buttonFrame.Name = "ForgeOpenButton"
-    buttonFrame.Size = UDim2.new(0, 60, 0, 60)
-    buttonFrame.Position = UDim2.new(0, 10, 0, 10)
-    buttonFrame.BackgroundTransparency = 1
-    buttonFrame.Visible = true
-    buttonFrame.ZIndex = 1000
-    
-    -- Background with rounded corners
-    local background = Instance.new("ImageLabel")
-    background.Name = "Background"
-    background.Size = UDim2.new(1, 0, 1, 0)
-    background.Image = "rbxassetid://8992230677"
-    background.ScaleType = Enum.ScaleType.Slice
-    background.SliceCenter = Rect.new(99, 99, 99, 99)
-    background.BackgroundTransparency = 1
-    background.ImageColor3 = Color3.fromRGB(40, 40, 50)
-    background.ImageTransparency = 0.2
-    
-    -- Icon (hammer)
-    local icon = Instance.new("ImageLabel")
-    icon.Name = "Icon"
-    icon.Size = UDim2.new(0, 32, 0, 32)
-    icon.Position = UDim2.new(0.5, 0, 0.5, 0)
-    icon.AnchorPoint = Vector2.new(0.5, 0.5)
-    icon.BackgroundTransparency = 1
-    icon.Image = "rbxassetid://7734053491" -- Hammer icon
-    icon.ImageColor3 = Color3.fromRGB(255, 255, 255)
-    
-    -- Click area
-    local button = Instance.new("TextButton")
-    button.Name = "Button"
-    button.Size = UDim2.new(1, 0, 1, 0)
-    button.BackgroundTransparency = 1
-    button.Text = ""
-    button.ZIndex = 1001
-    
-    -- Assemble
-    background.Parent = buttonFrame
-    icon.Parent = buttonFrame
-    button.Parent = buttonFrame
-    
-    -- Animation function
-    local function animateHover(isHovering)
-        local targetTransparency = isHovering and 0.1 or 0.2
-        local targetScale = isHovering and 1.1 or 1.0
-        
-        local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        
-        local tween1 = TweenService:Create(background, tweenInfo, {
-            ImageTransparency = targetTransparency
-        })
-        
-        local tween2 = TweenService:Create(icon, tweenInfo, {
-            Size = UDim2.new(0, 32 * targetScale, 0, 32 * targetScale)
-        })
-        
-        tween1:Play()
-        tween2:Play()
-    end
-    
-    -- Button events
-    button.MouseEnter:Connect(function()
-        animateHover(true)
-    end)
-    
-    button.MouseLeave:Connect(function()
-        animateHover(false)
-    end)
-    
-    button.MouseButton1Click:Connect(function()
-        if PepsiForgeWindow then
-            toggleGUI()
-        end
-    end)
-    
-    buttonFrame.Parent = playerGui
-    return buttonFrame
-end
-
-----------------------------------------------------------------
--- TOGGLE GUI FUNCTION (Simple hide/show)
+-- GUI TOGGLE FUNCTIONS
 ----------------------------------------------------------------
 local function toggleGUI()
-    if not PepsiForgeWindow then return end
-    
-    guiVisible = not guiVisible
-    
-    if guiVisible then
-        -- Show window
-        PepsiForgeWindow.UIElements.Main.Visible = true
-        PepsiForgeWindow.UIElements.Main.Main.Visible = true
+    if PepsiForgeWindow then
+        guiVisible = not guiVisible
         
-        WindUI:Notify({
-            Title = "GUI",
-            Content = "GUI opened",
-            Icon = "eye",
-            Duration = 1.5
-        })
+        if guiVisible then
+            PepsiForgeWindow:Open()
+            if openButton then
+                openButton:Visible(false)
+            end
+            WindUI:Notify({
+                Title = "GUI",
+                Content = "GUI opened",
+                Icon = "eye",
+                Duration = 1.5
+            })
+        else
+            PepsiForgeWindow:Close()
+            if openButton then
+                openButton:Visible(true)
+            end
+            WindUI:Notify({
+                Title = "GUI",
+                Content = "GUI hidden",
+                Icon = "eye-off",
+                Duration = 1.5
+            })
+        end
         
-        print("[FORGE SYSTEM] GUI opened")
-    else
-        -- Hide window
-        PepsiForgeWindow.UIElements.Main.Visible = false
-        PepsiForgeWindow.UIElements.Main.Main.Visible = false
-        
-        WindUI:Notify({
-            Title = "GUI",
-            Content = "GUI hidden",
-            Icon = "eye-off",
-            Duration = 1.5
-        })
-        
-        print("[FORGE SYSTEM] GUI hidden - click button to show")
+        print("[FORGE SYSTEM] GUI toggled: " .. (guiVisible and "VISIBLE" or "HIDDEN"))
     end
 end
 
 ----------------------------------------------------------------
--- CREATE WINDUI WINDOW
+-- CREATE WINDUI WINDOW WITH OPEN BUTTON
 ----------------------------------------------------------------
 local function createWindUI()
     if not loadUILibrary() then
@@ -463,7 +373,7 @@ local function createWindUI()
         return createFallbackUI()
     end
     
-    -- Create main window WITHOUT OpenButton configuration
+    -- Create main window
     PepsiForgeWindow = WindUI:CreateWindow({
         Title = "JawirScript - Auto Forge",
         Folder = "JawirScriptForge",
@@ -474,12 +384,22 @@ local function createWindUI()
         Acrylic = true,
         Background = Color3.fromRGB(30, 30, 35),
         Author = "Auto Forge System",
-        -- No ToggleKey - we'll use our own
-        -- No OpenButton - we'll create our own
+        ToggleKey = Enum.KeyCode.RightControl, -- Set default toggle key
+        OpenButton = { -- Add open button configuration
+            Title = "Auto Forge",
+            Icon = "hammer",
+            Enabled = true,
+            Position = UDim2.new(0, 10, 0.5, -50),
+            OnlyIcon = false,
+            Color = ColorSequence.new(
+                Color3.fromHex("#FF6B6B"),
+                Color3.fromHex("#4ECDC4")
+            )
+        }
     })
     
-    -- Create our custom open button (always visible)
-    openButton = createOpenButton()
+    -- Store open button reference
+    openButton = PepsiForgeWindow.OpenButtonMain
     
     -- Create General Tab
     local GeneralTab = PepsiForgeWindow:Tab({
@@ -514,6 +434,15 @@ local function createWindUI()
     
     -- Divider
     GeneralTab:Divider()
+    
+    -- GUI Toggle button
+    GeneralTab:Button({
+        Title = "👁️ Toggle GUI",
+        Desc = "Show/Hide the GUI interface",
+        Callback = function()
+            toggleGUI()
+        end
+    })
     
     -- Toggles Section
     GeneralTab:Paragraph({
@@ -603,6 +532,28 @@ local function createWindUI()
                 Duration = 3
             })
             print("[FORGE SYSTEM] GUI toggle keybind set to: " .. key)
+        end
+    })
+    
+    -- Open Button Style
+    SettingsTab:Dropdown({
+        Title = "Open Button Style",
+        Desc = "Style of the open button",
+        Value = "Full",
+        Values = {"Full", "Icon Only", "Text Only"},
+        Callback = function(value)
+            if openButton then
+                local config = {
+                    OnlyIcon = value == "Icon Only"
+                }
+                PepsiForgeWindow:EditOpenButton(config)
+                WindUI:Notify({
+                    Title = "Button Style",
+                    Content = "Changed to: " .. value,
+                    Icon = "layout",
+                    Duration = 2
+                })
+            end
         end
     })
     
@@ -710,12 +661,12 @@ local function createWindUI()
     
     InfoTab:Paragraph({
         Title = "📖 Auto Forge System v1.0",
-        Desc = "Automatically skips forge minigames and hammers for you.\n\nFeatures:\n• Skip Melt minigame\n• Skip Pour minigame\n• Auto Hammer during hammer minigame\n• Adjustable hammer speed\n• Emergency stop\n• Debug mode\n• Always visible button (top-left)\n\nBy JawirScript"
+        Desc = "Automatically skips forge minigames and hammers for you.\n\nFeatures:\n• Skip Melt minigame\n• Skip Pour minigame\n• Auto Hammer during hammer minigame\n• Adjustable hammer speed\n• Emergency stop\n• Debug mode\n• GUI toggle button\n• Customizable open button\n\nBy JawirScript"
     })
     
     InfoTab:Paragraph({
         Title = "🔧 GUI Controls",
-        Desc = "• Press " .. toggleKeybind .. " to hide/show GUI\n• Click button in top-left corner\n• Button is always visible"
+        Desc = "• Press RightControl to toggle GUI\n• Click open button to show GUI\n• Use toggle button in Main tab\n• Configure keybind in Settings"
     })
     
     InfoTab:Button({
@@ -750,8 +701,6 @@ local function createWindUI()
     setupKeybindListener()
     
     print("[FORGE SYSTEM] WindUI loaded successfully")
-    print("[FORGE SYSTEM] Button is ALWAYS VISIBLE in top-left corner")
-    print("[FORGE SYSTEM] Press " .. toggleKeybind .. " or click button to toggle GUI")
     return true
 end
 
@@ -860,10 +809,16 @@ local function setupForgeSkip()
         end
     end)
     
+    -- Game close cleanup
+    game:BindToClose(function()
+        print("[SHUTDOWN] Game closing, stopping auto hammer")
+        stopAutoHammer()
+    end)
+    
     print("[FORGE SYSTEM] Initialization complete")
     print("[FORGE SYSTEM] Default cooldown: " .. HAMMER_COOLDOWN .. "s")
     print("[FORGE SYSTEM] GUI Toggle Key: " .. toggleKeybind)
-    print("[FORGE SYSTEM] Button is ALWAYS VISIBLE in top-left corner")
+    print("[FORGE SYSTEM] Use RightControl to toggle GUI")
     print("========================================")
 end
 
