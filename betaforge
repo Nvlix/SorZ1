@@ -5,6 +5,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local Knit
 
 -- Remote references
@@ -29,6 +30,11 @@ local minigameCompleteFlag = false
 local WindUI
 local PepsiForgeWindow
 local flags = {}
+
+-- GUI Toggle State
+local guiVisible = true
+local openButton
+local toggleKeybind = "RightControl" -- Default toggle key
 
 ----------------------------------------------------------------
 -- LOAD WINDUI LIBRARY
@@ -324,7 +330,42 @@ local function hookMinigameModules()
 end
 
 ----------------------------------------------------------------
--- CREATE WINDUI WINDOW
+-- GUI TOGGLE FUNCTIONS
+----------------------------------------------------------------
+local function toggleGUI()
+    if PepsiForgeWindow then
+        guiVisible = not guiVisible
+        
+        if guiVisible then
+            PepsiForgeWindow:Open()
+            if openButton then
+                openButton:Visible(false)
+            end
+            WindUI:Notify({
+                Title = "GUI",
+                Content = "GUI opened",
+                Icon = "eye",
+                Duration = 1.5
+            })
+        else
+            PepsiForgeWindow:Close()
+            if openButton then
+                openButton:Visible(true)
+            end
+            WindUI:Notify({
+                Title = "GUI",
+                Content = "GUI hidden",
+                Icon = "eye-off",
+                Duration = 1.5
+            })
+        end
+        
+        print("[FORGE SYSTEM] GUI toggled: " .. (guiVisible and "VISIBLE" or "HIDDEN"))
+    end
+end
+
+----------------------------------------------------------------
+-- CREATE WINDUI WINDOW WITH OPEN BUTTON
 ----------------------------------------------------------------
 local function createWindUI()
     if not loadUILibrary() then
@@ -342,8 +383,23 @@ local function createWindUI()
         Resizable = true,
         Acrylic = true,
         Background = Color3.fromRGB(30, 30, 35),
-        Author = "Auto Forge System"
+        Author = "Auto Forge System",
+        ToggleKey = Enum.KeyCode.RightControl, -- Set default toggle key
+        OpenButton = { -- Add open button configuration
+            Title = "Auto Forge",
+            Icon = "hammer",
+            Enabled = true,
+            Position = UDim2.new(0, 10, 0.5, -50),
+            OnlyIcon = false,
+            Color = ColorSequence.new(
+                Color3.fromHex("#FF6B6B"),
+                Color3.fromHex("#4ECDC4")
+            )
+        }
     })
+    
+    -- Store open button reference
+    openButton = PepsiForgeWindow.OpenButtonMain
     
     -- Create General Tab
     local GeneralTab = PepsiForgeWindow:Tab({
@@ -378,6 +434,15 @@ local function createWindUI()
     
     -- Divider
     GeneralTab:Divider()
+    
+    -- GUI Toggle button
+    GeneralTab:Button({
+        Title = "👁️ Toggle GUI",
+        Desc = "Show/Hide the GUI interface",
+        Callback = function()
+            toggleGUI()
+        end
+    })
     
     -- Toggles Section
     GeneralTab:Paragraph({
@@ -447,6 +512,51 @@ local function createWindUI()
         Desc = "Configuration Settings"
     })
     
+    -- GUI Settings Section
+    SettingsTab:Paragraph({
+        Title = "🖥️ GUI Settings",
+        Desc = "Configure GUI appearance and behavior"
+    })
+    
+    -- GUI Toggle Keybind
+    SettingsTab:Keybind({
+        Title = "Toggle GUI Key",
+        Desc = "Key to toggle GUI visibility",
+        Value = "RightControl",
+        Callback = function(key)
+            toggleKeybind = key
+            WindUI:Notify({
+                Title = "Keybind Updated",
+                Content = "Press " .. key .. " to toggle GUI",
+                Icon = "keyboard",
+                Duration = 3
+            })
+            print("[FORGE SYSTEM] GUI toggle keybind set to: " .. key)
+        end
+    })
+    
+    -- Open Button Style
+    SettingsTab:Dropdown({
+        Title = "Open Button Style",
+        Desc = "Style of the open button",
+        Value = "Full",
+        Values = {"Full", "Icon Only", "Text Only"},
+        Callback = function(value)
+            if openButton then
+                local config = {
+                    OnlyIcon = value == "Icon Only"
+                }
+                PepsiForgeWindow:EditOpenButton(config)
+                WindUI:Notify({
+                    Title = "Button Style",
+                    Content = "Changed to: " .. value,
+                    Icon = "layout",
+                    Duration = 2
+                })
+            end
+        end
+    })
+    
     -- Hammer Speed Slider
     SettingsTab:Slider({
         Title = "Hammer Speed",
@@ -508,7 +618,9 @@ local function createWindUI()
             statusText = statusText .. "Hammer Task: " .. (hammerTask and "ACTIVE" or "INACTIVE") .. "\n"
             statusText = statusText .. "Cooldown: " .. string.format("%.1f", HAMMER_COOLDOWN) .. "s\n"
             statusText = statusText .. "UI Visible: " .. tostring(isMinigameVisible()) .. "\n"
-            statusText = statusText .. "Hooks Active: " .. (originalMinigames.MeltStart and "YES" or "NO")
+            statusText = statusText .. "Hooks Active: " .. (originalMinigames.MeltStart and "YES" or "NO") .. "\n"
+            statusText = statusText .. "GUI Visible: " .. tostring(guiVisible) .. "\n"
+            statusText = statusText .. "Toggle Key: " .. toggleKeybind
             
             WindUI:Dialog({
                 Title = "System Status",
@@ -549,7 +661,12 @@ local function createWindUI()
     
     InfoTab:Paragraph({
         Title = "📖 Auto Forge System v1.0",
-        Desc = "Automatically skips forge minigames and hammers for you.\n\nFeatures:\n• Skip Melt minigame\n• Skip Pour minigame\n• Auto Hammer during hammer minigame\n• Adjustable hammer speed\n• Emergency stop\n• Debug mode\n\nBy JawirScript"
+        Desc = "Automatically skips forge minigames and hammers for you.\n\nFeatures:\n• Skip Melt minigame\n• Skip Pour minigame\n• Auto Hammer during hammer minigame\n• Adjustable hammer speed\n• Emergency stop\n• Debug mode\n• GUI toggle button\n• Customizable open button\n\nBy JawirScript"
+    })
+    
+    InfoTab:Paragraph({
+        Title = "🔧 GUI Controls",
+        Desc = "• Press RightControl to toggle GUI\n• Click open button to show GUI\n• Use toggle button in Main tab\n• Configure keybind in Settings"
     })
     
     InfoTab:Button({
@@ -569,6 +686,19 @@ local function createWindUI()
             })
         end
     })
+    
+    -- Setup keybind listener
+    local function setupKeybindListener()
+        UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if not gameProcessed then
+                if input.KeyCode == Enum.KeyCode[toggleKeybind] then
+                    toggleGUI()
+                end
+            end
+        end)
+    end
+    
+    setupKeybindListener()
     
     print("[FORGE SYSTEM] WindUI loaded successfully")
     return true
@@ -687,7 +817,8 @@ local function setupForgeSkip()
     
     print("[FORGE SYSTEM] Initialization complete")
     print("[FORGE SYSTEM] Default cooldown: " .. HAMMER_COOLDOWN .. "s")
-    print("[FORGE SYSTEM] Use UI to configure settings")
+    print("[FORGE SYSTEM] GUI Toggle Key: " .. toggleKeybind)
+    print("[FORGE SYSTEM] Use RightControl to toggle GUI")
     print("========================================")
 end
 
@@ -705,6 +836,7 @@ end)
 return {
     StopHammer = stopAutoHammer,
     StartHammer = startAutoHammer,
+    ToggleGUI = toggleGUI,
     GetStatus = function()
         return {
             MinigameActive = isHammerMinigameActive,
@@ -712,10 +844,15 @@ return {
             Cooldown = HAMMER_COOLDOWN,
             UIVisible = isMinigameVisible(),
             TimerComplete = isMinigameTimerComplete(),
+            GUIVisible = guiVisible,
+            ToggleKey = toggleKeybind,
             Flags = flags
         }
     end,
     SetDebugMode = function(value)
         debugMode = value
+    end,
+    SetToggleKey = function(key)
+        toggleKeybind = key
     end
 }
