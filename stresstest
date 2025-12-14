@@ -3113,31 +3113,39 @@ local function initializeSystem()
     end
     
     -- Create GUI
-    local guiSuccess = pcall(createMainWindow)
-    if not guiSuccess then
-        print("[SYSTEM] Failed to create GUI, creating fallback")
-        -- Coba buat fallback GUI
-        pcall(function()
-            local ScreenGui = Instance.new("ScreenGui")
-            ScreenGui.Name = "JawirScriptFallback"
-            ScreenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
-            
-            local TextLabel = Instance.new("TextLabel")
-            TextLabel.Size = UDim2.new(0, 200, 0, 50)
-            TextLabel.Position = UDim2.new(0, 10, 0, 10)
-            TextLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-            TextLabel.BackgroundTransparency = 0.5
-            TextLabel.Text = "JawirScript Loaded\nPress RightControl"
-            TextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-            TextLabel.Font = Enum.Font.SourceSansBold
-            TextLabel.TextSize = 14
-            TextLabel.Parent = ScreenGui
-            
-            print("[SYSTEM] Fallback GUI created")
+local guiSuccess = pcall(createMainWindow)
+if not guiSuccess then
+    print("[SYSTEM] Failed to create GUI, creating fallback")
+
+    pcall(function()
+        local ScreenGui = Instance.new("ScreenGui")
+        ScreenGui.Name = "JawirScriptFallback"
+        ScreenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+
+        local TextLabel = Instance.new("TextLabel")
+        TextLabel.Size = UDim2.new(0, 200, 0, 50)
+        TextLabel.Position = UDim2.new(0, 10, 0, 10)
+        TextLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+        TextLabel.BackgroundTransparency = 0.5
+        TextLabel.Text = "JawirScript Loaded\nPress RightControl"
+        TextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        TextLabel.Font = Enum.Font.SourceSansBold
+        TextLabel.TextSize = 14
+        TextLabel.Parent = ScreenGui
+
+
+        task.delay(3, function()
+            if ScreenGui then
+                ScreenGui:Destroy()
+            end
         end)
-    else
-        print("[SYSTEM] GUI created successfully")
-    end
+
+        print("[SYSTEM] Fallback GUI created (auto-hide 3s)")
+    end)
+else
+    print("[SYSTEM] GUI created successfully")
+end
+
     
     setupEventListeners()
     startESPScanning()
