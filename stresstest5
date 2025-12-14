@@ -4,6 +4,7 @@
 -- Gabungan sistem: Forge Skipper + Auto Mine System + Mob ESP & Auto Attack
 -- TIDAK DETEKSI PLAYER - HANYA MOB
 -- DUKUNGAN MOBILE: Tombol floating untuk toggle GUI
+-- FIXED: OpenButton untuk show/hide GUI bawaan Wind UI
 -- ============================================================
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -376,9 +377,9 @@ local MobConfigs = {
 }
 
 -- GUI STATE
-local guiVisible = true
+local guiVisible = false -- Default GUI disembunyikan
 local toggleKeybind = "RightControl"
-local WindUI, MainWindow
+local WindUI, MainWindow, OpenButton
 local MobileToggleButton -- Tombol untuk mobile
 
 -- FLAGS STATE
@@ -1819,6 +1820,36 @@ end
 -- ==================== AUTO MINE SYSTEM =====================
 ----------------------------------------------------------------
 
+local function callMiningRemotes()
+    local success1, result1 = pcall(function()
+        local args = {"Weapon"}
+        return ToolServiceRF:InvokeServer(unpack(args))
+    end)
+    
+    task.wait(0.1)
+    
+    local success2, result2 = pcall(function()
+        local args = {"Pickaxe"}
+        return ToolServiceRF:InvokeServer(unpack(args))
+    end)
+    
+    task.wait(0.1)
+    
+    local success3, result3 = pcall(function()
+        local args = {"Weapon"}
+        return ToolServiceRF:InvokeServer(unpack(args))
+    end)
+    
+    task.wait(0.1)
+    
+    local success4, result4 = pcall(function()
+        local args = {"Pickaxe"}
+        return ToolServiceRF:InvokeServer(unpack(args))
+    end)
+    
+    return success1 and success2 and success3 and success4
+end
+
 local function getRocksData()
     local rocks = {}
     local character = LocalPlayer.Character
@@ -1861,36 +1892,6 @@ local function findNearestRock()
     local rocks = getRocksData()
     if #rocks == 0 then return nil end
     return rocks[1]
-end
-
-local function callMiningRemotes()
-    local success1, result1 = pcall(function()
-        local args = {"Weapon"}
-        return ToolServiceRF:InvokeServer(unpack(args))
-    end)
-    
-    task.wait(0.1)
-    
-    local success2, result2 = pcall(function()
-        local args = {"Pickaxe"}
-        return ToolServiceRF:InvokeServer(unpack(args))
-    end)
-    
-    task.wait(0.1)
-    
-    local success3, result3 = pcall(function()
-        local args = {"Weapon"}
-        return ToolServiceRF:InvokeServer(unpack(args))
-    end)
-    
-    task.wait(0.1)
-    
-    local success4, result4 = pcall(function()
-        local args = {"Pickaxe"}
-        return ToolServiceRF:InvokeServer(unpack(args))
-    end)
-    
-    return success1 and success2 and success3 and success4
 end
 
 local function tweenToRockAndMine(rockData)
@@ -2146,9 +2147,6 @@ local function toggleGUI()
     
     if guiVisible then
         MainWindow:Close()
-        if MainWindow.OpenButtonMain then
-            MainWindow.OpenButtonMain:Visible(true)
-        end
         guiVisible = false
         print("[GUI] GUI hidden")
         
@@ -2159,9 +2157,6 @@ local function toggleGUI()
         end
     else
         MainWindow:Open()
-        if MainWindow.OpenButtonMain then
-            MainWindow.OpenButtonMain:Visible(false)
-        end
         guiVisible = true
         print("[GUI] GUI shown")
         
@@ -2174,233 +2169,47 @@ local function toggleGUI()
 end
 
 local function createMainWindow()
-    -- Simple fallback GUI jika WindUI gagal
-    local function createFallbackGUI()
-        print("[GUI] Creating fallback GUI...")
-        
-        local ScreenGui = Instance.new("ScreenGui")
-        ScreenGui.Name = "JawirScriptFallbackGUI"
-        ScreenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
-        
-        local MainFrame = Instance.new("Frame")
-        MainFrame.Size = UDim2.new(0, 350, 0, 450)
-        MainFrame.Position = UDim2.new(0.5, -175, 0.5, -225)
-        MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-        MainFrame.BorderSizePixel = 0
-        MainFrame.Active = true
-        MainFrame.Draggable = true
-        MainFrame.Visible = guiVisible
-        MainFrame.Parent = ScreenGui
-        
-        -- Buat corner
-        local UICorner = Instance.new("UICorner")
-        UICorner.CornerRadius = UDim.new(0, 8)
-        UICorner.Parent = MainFrame
-        
-        local Title = Instance.new("TextLabel")
-        Title.Size = UDim2.new(1, 0, 0, 40)
-        Title.Position = UDim2.new(0, 0, 0, 0)
-        Title.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
-        Title.Text = "JawirScript - Mobile GUI"
-        Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-        Title.Font = Enum.Font.SourceSansBold
-        Title.TextSize = 18
-        Title.Parent = MainFrame
-        
-        local CloseButton = Instance.new("TextButton")
-        CloseButton.Size = UDim2.new(0, 30, 0, 30)
-        CloseButton.Position = UDim2.new(1, -35, 0, 5)
-        CloseButton.Text = "X"
-        CloseButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
-        CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        CloseButton.Font = Enum.Font.SourceSansBold
-        CloseButton.TextSize = 18
-        CloseButton.Parent = MainFrame
-        CloseButton.MouseButton1Click:Connect(function()
-            MainFrame.Visible = not MainFrame.Visible
-            guiVisible = MainFrame.Visible
-            
-            -- Update tombol mobile
-            if MobileToggleButton then
-                if guiVisible then
-                    MobileToggleButton.Text = "📱\nOPEN"
-                    MobileToggleButton.BackgroundColor3 = Color3.fromRGB(0, 200, 83)
-                else
-                    MobileToggleButton.Text = "📱\nGUI"
-                    MobileToggleButton.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
-                end
-            end
-        end)
-        
-        local ScrollFrame = Instance.new("ScrollingFrame")
-        ScrollFrame.Size = UDim2.new(1, -10, 1, -50)
-        ScrollFrame.Position = UDim2.new(0, 5, 0, 45)
-        ScrollFrame.BackgroundTransparency = 1
-        ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 600)
-        ScrollFrame.ScrollBarThickness = 8
-        ScrollFrame.Parent = MainFrame
-        
-        local UIListLayout = Instance.new("UIListLayout")
-        UIListLayout.Padding = UDim.new(0, 8)
-        UIListLayout.Parent = ScrollFrame
-        
-        -- Tambahkan tombol-tombol utama dengan ukuran lebih besar untuk mobile
-        local buttons = {
-            {"⛏️ Auto Mine", toggleAutoMine},
-            {"⚔️ Auto Attack", toggleAutoAttack},
-            {"🗿 Rock ESP", toggleRockESP},
-            {"👹 Mob ESP", toggleMobESP},
-            {"🎯 Mine Nearest", forceMineNearest},
-            {"🎯 Attack Nearest", forceAttackNearest},
-            {"👻 Noclip", toggleNoclip},
-            {"🧹 Clean ESP", cleanupESP},
-            {"🛑 Stop All", function()
-                stopAutoHammer()
-                AutoMineEnabled = false
-                flags.AutoAttackEnabled = false
-                IsMining = false
-                IsAttacking = false
-                disableNoclip()
-            end}
-        }
-        
-        for i, buttonData in ipairs(buttons) do
-            local button = Instance.new("TextButton")
-            button.Size = UDim2.new(1, -10, 0, 50) -- Lebih besar untuk mobile
-            button.Text = buttonData[1]
-            button.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
-            button.TextColor3 = Color3.fromRGB(255, 255, 255)
-            button.Font = Enum.Font.SourceSansSemibold
-            button.TextSize = 16
-            button.Parent = ScrollFrame
-            
-            -- Buat corner untuk tombol
-            local buttonCorner = Instance.new("UICorner")
-            buttonCorner.CornerRadius = UDim.new(0, 6)
-            buttonCorner.Parent = button
-            
-            -- Tambahkan efek hover
-            button.MouseEnter:Connect(function()
-                game:GetService("TweenService"):Create(
-                    button,
-                    TweenInfo.new(0.2),
-                    {BackgroundColor3 = Color3.fromRGB(80, 80, 90)}
-                ):Play()
-            end)
-            
-            button.MouseLeave:Connect(function()
-                game:GetService("TweenService"):Create(
-                    button,
-                    TweenInfo.new(0.2),
-                    {BackgroundColor3 = Color3.fromRGB(60, 60, 70)}
-                ):Play()
-            end)
-            
-            button.MouseButton1Click:Connect(function()
-                buttonData[2]()
-                
-                -- Animasi klik
-                game:GetService("TweenService"):Create(
-                    button,
-                    TweenInfo.new(0.1),
-                    {BackgroundColor3 = Color3.fromRGB(100, 100, 110)}
-                ):Play()
-                wait(0.1)
-                game:GetService("TweenService"):Create(
-                    button,
-                    TweenInfo.new(0.1),
-                    {BackgroundColor3 = Color3.fromRGB(60, 60, 70)}
-                ):Play()
-            end)
-        end
-        
-        print("[GUI] Fallback Mobile GUI created successfully")
-        
-        return {
-            Open = function() 
-                MainFrame.Visible = true 
-                guiVisible = true
-            end,
-            Close = function() 
-                MainFrame.Visible = false 
-                guiVisible = false
-            end,
-            OpenButtonMain = {
-                Visible = function(visible)
-                    -- Do nothing for fallback
-                end
-            }
-        }
-    end
-    
     -- Coba load WindUI
     if not loadUILibrary() then
-    print("[GUI] WindUI failed to load, using fallback GUI")
-    MainWindow = createFallbackGUI()
-    return MainWindow
-end
-
-print("[GUI] Creating WindUI Window...")
-
-local success, window = pcall(function()
-    return WindUI:CreateWindow({
-        Title = "JawirScript - Mobile",
-        Folder = "JawirScriptMobileSystem",
-        Theme = "Dark",
-
-        -- 📱 MOBILE SIZE
-        Size = UDim2.new(0, 400, 0, 500),
-        Radius = 12,
-        Resizable = true,
-        Acrylic = true,
-        Background = Color3.fromRGB(30, 30, 35),
-        Author = "Mobile Compatible - Tap Button 📱",
-
-        -- ⛔ MATIKAN KEYBOARD TOGGLE (MOBILE)
-        ToggleKey = nil,
-
-        -- ✅ WINDUI MOBILE TOGGLE BUTTON
-        OpenButton = {
-            Enabled = true,
-
-            Title = "Jawir",
-            Icon = "smartphone",
-
-            -- 📍 POSISI AWAL (KANAN TENGAH LAYAR)
-            Position = UDim2.new(1, -70, 0.5, -30),
-
-            -- 📱 MOBILE SETTINGS
-            OnlyIcon = true,
-            Draggable = true,
-
-            -- 🎨 STYLE
-            Color = ColorSequence.new(
-                Color3.fromRGB(33, 150, 243),
-                Color3.fromRGB(76, 175, 80)
-            )
-        }
-    })
-end)
-
-if success then
-    MainWindow = window
-else
-    warn("[GUI] Failed to create WindUI window")
-    return
-end
-
-
-task.spawn(function()
-    task.wait(1)
-    if MainWindow and MainWindow.OpenButtonMain then
-        MainWindow.OpenButtonMain.Active = true
-        MainWindow.OpenButtonMain.Draggable = true
+        print("[GUI] WindUI failed to load, using fallback GUI")
+        MainWindow = createFallbackGUI()
+        return MainWindow
     end
-end)
-
+    
+    print("[GUI] Creating WindUI Window with OpenButton...")
+    
+    -- Simpan referensi ke OpenButton
+    OpenButton = nil
+    
+    local success, window = pcall(function()
+        return WindUI:CreateWindow({
+            Title = "JawirScript - Mobile",
+            Folder = "JawirScriptMobileSystem",
+            Theme = "Dark",
+            Size = UDim2.new(0, 400, 0, 500),
+            Radius = 12,
+            Resizable = true,
+            Acrylic = true,
+            Background = Color3.fromRGB(30, 30, 35),
+            Author = "Mobile Compatible - Tap 📱 button",
+            ToggleKey = Enum.KeyCode.RightControl,
+            OpenButton = {
+                Title = "📱 Jawir",
+                Icon = "smartphone",
+                Enabled = true,
+                Position = UDim2.new(0.5, -60, 0, 20),
+                OnlyIcon = false,
+                Draggable = true,
+                Color = ColorSequence.new(
+                    Color3.fromHex("#2196F3"),
+                    Color3.fromHex("#4CAF50")
+                )
+            }
+        })
+    end)
     
     if not success then
-        print("[GUI] Failed to create WindUI window, using fallback: " .. tostring(window))
+        print("[GUI] Failed to create WindUI window: " .. tostring(window))
         MainWindow = createFallbackGUI()
         return MainWindow
     end
@@ -2408,7 +2217,16 @@ end)
     MainWindow = window
     print("[GUI] WindUI Mobile Window created successfully")
     
-    -- Buat tabs sederhana untuk mobile
+    -- Tandai GUI awalnya tertutup
+    guiVisible = false
+    
+    -- Simpan referensi ke OpenButton dari MainWindow
+    if MainWindow.OpenButtonMain then
+        OpenButton = MainWindow.OpenButtonMain
+        print("[GUI] OpenButton reference saved")
+    end
+    
+    -- Buat tabs untuk WindUI
     pcall(function()
         -- Tab 1: Main Controls
         local MainTab = MainWindow:Tab({
@@ -2443,6 +2261,15 @@ end)
             end
         })
         
+        MainTab:Toggle({
+            Title = "🔨 Auto Hammer",
+            Desc = "Auto hammer minigame",
+            Value = flags.AutoHammerEnabled,
+            Callback = function(value)
+                flags.AutoHammerEnabled = value
+            end
+        })
+        
         MainTab:Divider()
         
         MainTab:Button({
@@ -2458,6 +2285,14 @@ end)
             Desc = "Attack nearest mob",
             Callback = function()
                 forceAttackNearest()
+            end
+        })
+        
+        MainTab:Button({
+            Title = "🔧 Activate Hooks",
+            Desc = "Activate forge hooks",
+            Callback = function()
+                hookMinigameModules()
             end
         })
         
@@ -2493,33 +2328,261 @@ end)
             end
         })
         
-        -- Tab 3: Forge
-        local ForgeTab = MainWindow:Tab({
-            Title = "⚒️ Forge",
-            Desc = "Forge Settings"
-        })
-        
-        ForgeTab:Button({
-            Title = "🔧 Activate Hooks",
-            Desc = "Activate forge hooks",
-            Callback = function()
-                hookMinigameModules()
+        ESPTab:Slider({
+            Title = "Rock ESP Distance",
+            Desc = "Set rock ESP distance",
+            Value = ESPDistance,
+            Min = 10,
+            Max = 2000,
+            Callback = function(value)
+                setESPDistance(value)
             end
         })
         
-        ForgeTab:Toggle({
-            Title = "🔨 Auto Hammer",
-            Desc = "Auto hammer minigame",
-            Value = flags.AutoHammerEnabled,
+        ESPTab:Slider({
+            Title = "Mob ESP Distance",
+            Desc = "Set mob ESP distance",
+            Value = MobESPDistance,
+            Min = 10,
+            Max = 1000,
             Callback = function(value)
-                flags.AutoHammerEnabled = value
+                setMobESPDistance(value)
+            end
+        })
+        
+        -- Tab 3: Settings
+        local SettingsTab = MainWindow:Tab({
+            Title = "⚙️ Settings",
+            Desc = "Advanced Settings"
+        })
+        
+        SettingsTab:Slider({
+            Title = "Mining Speed",
+            Desc = "Set mining movement speed",
+            Value = MINING_SPEED,
+            Min = 10,
+            Max = 500,
+            Callback = function(value)
+                setMiningSpeed(value)
+            end
+        })
+        
+        SettingsTab:Slider({
+            Title = "Attack Speed",
+            Desc = "Set attack movement speed",
+            Value = ATTACK_SPEED,
+            Min = 10,
+            Max = 500,
+            Callback = function(value)
+                setAttackSpeed(value)
+            end
+        })
+        
+        SettingsTab:Slider({
+            Title = "Fly Height",
+            Desc = "Set mining fly height",
+            Value = FLY_HEIGHT,
+            Min = 0,
+            Max = 100,
+            Callback = function(value)
+                setFlyHeight(value)
+            end
+        })
+        
+        SettingsTab:Toggle({
+            Title = "Attack While Mining",
+            Desc = "Attack mobs while mining",
+            Value = flags.AttackWhileMining,
+            Callback = function(value)
+                flags.AttackWhileMining = value
+            end
+        })
+        
+        SettingsTab:Button({
+            Title = "🛑 Stop All",
+            Desc = "Stop all systems",
+            Callback = function()
+                stopAutoHammer()
+                AutoMineEnabled = false
+                flags.AutoAttackEnabled = false
+                IsMining = false
+                IsAttacking = false
+                disableNoclip()
             end
         })
         
         print("[GUI] Mobile tabs created successfully")
     end)
     
+    -- Tutup GUI secara otomatis pada awalnya
+    MainWindow:Close()
+    print("[GUI] GUI initially hidden")
+    
     return MainWindow
+end
+
+-- Fallback GUI jika WindUI gagal
+local function createFallbackGUI()
+    print("[GUI] Creating fallback GUI...")
+    
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "JawirScriptFallbackGUI"
+    ScreenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+    
+    local MainFrame = Instance.new("Frame")
+    MainFrame.Size = UDim2.new(0, 350, 0, 450)
+    MainFrame.Position = UDim2.new(0.5, -175, 0.5, -225)
+    MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    MainFrame.BorderSizePixel = 0
+    MainFrame.Active = true
+    MainFrame.Draggable = true
+    MainFrame.Visible = false -- Awalnya disembunyikan
+    MainFrame.Parent = ScreenGui
+    
+    -- Buat corner
+    local UICorner = Instance.new("UICorner")
+    UICorner.CornerRadius = UDim.new(0, 8)
+    UICorner.Parent = MainFrame
+    
+    local Title = Instance.new("TextLabel")
+    Title.Size = UDim2.new(1, 0, 0, 40)
+    Title.Position = UDim2.new(0, 0, 0, 0)
+    Title.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+    Title.Text = "JawirScript - Mobile GUI"
+    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Title.Font = Enum.Font.SourceSansBold
+    Title.TextSize = 18
+    Title.Parent = MainFrame
+    
+    local CloseButton = Instance.new("TextButton")
+    CloseButton.Size = UDim2.new(0, 30, 0, 30)
+    CloseButton.Position = UDim2.new(1, -35, 0, 5)
+    CloseButton.Text = "X"
+    CloseButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+    CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CloseButton.Font = Enum.Font.SourceSansBold
+    CloseButton.TextSize = 18
+    CloseButton.Parent = MainFrame
+    CloseButton.MouseButton1Click:Connect(function()
+        MainFrame.Visible = not MainFrame.Visible
+        guiVisible = MainFrame.Visible
+        
+        -- Update tombol mobile
+        if MobileToggleButton then
+            if guiVisible then
+                MobileToggleButton.Text = "📱\nOPEN"
+                MobileToggleButton.BackgroundColor3 = Color3.fromRGB(0, 200, 83)
+            else
+                MobileToggleButton.Text = "📱\nGUI"
+                MobileToggleButton.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
+            end
+        end
+    end)
+    
+    local ScrollFrame = Instance.new("ScrollingFrame")
+    ScrollFrame.Size = UDim2.new(1, -10, 1, -50)
+    ScrollFrame.Position = UDim2.new(0, 5, 0, 45)
+    ScrollFrame.BackgroundTransparency = 1
+    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 600)
+    ScrollFrame.ScrollBarThickness = 8
+    ScrollFrame.Parent = MainFrame
+    
+    local UIListLayout = Instance.new("UIListLayout")
+    UIListLayout.Padding = UDim.new(0, 8)
+    UIListLayout.Parent = ScrollFrame
+    
+    -- Tambahkan tombol-tombol utama
+    local buttons = {
+        {"⛏️ Auto Mine", toggleAutoMine},
+        {"⚔️ Auto Attack", toggleAutoAttack},
+        {"🗿 Rock ESP", toggleRockESP},
+        {"👹 Mob ESP", toggleMobESP},
+        {"👻 Noclip", toggleNoclip},
+        {"🔨 Auto Hammer", function()
+            flags.AutoHammerEnabled = not flags.AutoHammerEnabled
+            print("[FORGE] Auto Hammer: " .. (flags.AutoHammerEnabled and "ENABLED" or "DISABLED"))
+        end},
+        {"🔧 Activate Hooks", hookMinigameModules},
+        {"🎯 Mine Nearest", forceMineNearest},
+        {"🎯 Attack Nearest", forceAttackNearest},
+        {"🧹 Clean ESP", cleanupESP},
+        {"🛑 Stop All", function()
+            stopAutoHammer()
+            AutoMineEnabled = false
+            flags.AutoAttackEnabled = false
+            IsMining = false
+            IsAttacking = false
+            disableNoclip()
+        end}
+    }
+    
+    for i, buttonData in ipairs(buttons) do
+        local button = Instance.new("TextButton")
+        button.Size = UDim2.new(1, -10, 0, 50)
+        button.Text = buttonData[1]
+        button.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+        button.TextColor3 = Color3.fromRGB(255, 255, 255)
+        button.Font = Enum.Font.SourceSansSemibold
+        button.TextSize = 16
+        button.Parent = ScrollFrame
+        
+        -- Buat corner untuk tombol
+        local buttonCorner = Instance.new("UICorner")
+        buttonCorner.CornerRadius = UDim.new(0, 6)
+        buttonCorner.Parent = button
+        
+        -- Tambahkan efek hover
+        button.MouseEnter:Connect(function()
+            game:GetService("TweenService"):Create(
+                button,
+                TweenInfo.new(0.2),
+                {BackgroundColor3 = Color3.fromRGB(80, 80, 90)}
+            ):Play()
+        end)
+        
+        button.MouseLeave:Connect(function()
+            game:GetService("TweenService"):Create(
+                button,
+                TweenInfo.new(0.2),
+                {BackgroundColor3 = Color3.fromRGB(60, 60, 70)}
+            ):Play()
+        end)
+        
+        button.MouseButton1Click:Connect(function()
+            buttonData[2]()
+            
+            -- Animasi klik
+            game:GetService("TweenService"):Create(
+                button,
+                TweenInfo.new(0.1),
+                {BackgroundColor3 = Color3.fromRGB(100, 100, 110)}
+            ):Play()
+            wait(0.1)
+            game:GetService("TweenService"):Create(
+                button,
+                TweenInfo.new(0.1),
+                {BackgroundColor3 = Color3.fromRGB(60, 60, 70)}
+            ):Play()
+        end)
+    end
+    
+    print("[GUI] Fallback Mobile GUI created successfully")
+    
+    return {
+        Open = function() 
+            MainFrame.Visible = true 
+            guiVisible = true
+        end,
+        Close = function() 
+            MainFrame.Visible = false 
+            guiVisible = false
+        end,
+        OpenButtonMain = {
+            Visible = function(visible)
+                -- Do nothing for fallback
+            end
+        }
+    }
 end
 
 ----------------------------------------------------------------
@@ -2583,6 +2646,7 @@ local function initializeSystem()
     print("ESP: Hanya deteksi MOB (TIDAK deteksi PLAYER)")
     print("Mobile: Tap 📱 button to toggle GUI")
     print("PC: Press RightControl to toggle GUI")
+    print("OpenButton: Click OpenButton untuk show/hide GUI")
     print("========================================")
     
     -- Initialize player blacklist
@@ -2593,7 +2657,7 @@ local function initializeSystem()
     -- Initialize remotes
     pcall(initializeRemotes)
     
-    -- Create GUI
+    -- Create GUI (dengan OpenButton)
     pcall(createMainWindow)
     
     -- Buat tombol mobile toggle
@@ -2665,6 +2729,7 @@ local function initializeSystem()
     print("[SYSTEM] Initialization complete")
     print("[SYSTEM] Mobile: Tap 📱 button to toggle GUI")
     print("[SYSTEM] PC: Press " .. toggleKeybind .. " to toggle GUI")
+    print("[SYSTEM] Click OpenButton untuk show/hide GUI")
     print("========================================")
 end
 
