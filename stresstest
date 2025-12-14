@@ -3,7 +3,6 @@
 -- ============================================================
 -- Gabungan sistem: Forge Skipper + Auto Mine System + Mob ESP & Auto Attack
 -- TIDAK DETEKSI PLAYER - HANYA MOB
--- DUKUNGAN MOBILE: Tombol floating untuk toggle GUI
 -- ============================================================
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -379,7 +378,6 @@ local MobConfigs = {
 local guiVisible = true
 local toggleKeybind = "RightControl"
 local WindUI, MainWindow
-local MobileToggleButton -- Tombol untuk mobile
 
 -- FLAGS STATE
 local flags = {
@@ -408,6 +406,16 @@ local function loadUILibrary()
         return true
     else
         warn("[WINDUI] Failed to load WindUI Library")
+        -- Coba alternatif
+        local success2, lib2 = pcall(function()
+            return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/src/main.lua"))()
+        end)
+        
+        if success2 then
+            WindUI = lib2
+            print("[WINDUI] Library loaded from alternative source")
+            return true
+        end
         return false
     end
 end
@@ -2030,111 +2038,6 @@ local function forceMineNearest()
 end
 
 ----------------------------------------------------------------
--- ==================== MOBILE GUI TOGGLE ====================
-----------------------------------------------------------------
-
-local function createMobileToggleButton()
-    -- Cek jika sudah ada tombol mobile
-    if MobileToggleButton then
-        MobileToggleButton:Destroy()
-    end
-    
-    -- Buat ScreenGui untuk mobile
-    local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "JawirScriptMobileGUI"
-    ScreenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
-    
-    -- Buat tombol floating
-    local ToggleButton = Instance.new("TextButton")
-    ToggleButton.Name = "MobileToggleButton"
-    ToggleButton.Size = UDim2.new(0, 60, 0, 60)
-    ToggleButton.Position = UDim2.new(1, -70, 0.5, -30) -- Pojok kanan tengah
-    ToggleButton.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
-    ToggleButton.BackgroundTransparency = 0.3
-    ToggleButton.BorderSizePixel = 0
-    ToggleButton.Text = "📱\nGUI"
-    ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ToggleButton.TextScaled = true
-    ToggleButton.Font = Enum.Font.SourceSansBold
-    ToggleButton.ZIndex = 100
-    ToggleButton.Parent = ScreenGui
-    
-    -- Buat corner radius
-    local UICorner = Instance.new("UICorner")
-    UICorner.CornerRadius = UDim.new(0.5, 0)
-    UICorner.Parent = ToggleButton
-    
-    -- Buat glow effect
-    local UIStroke = Instance.new("UIStroke")
-    UIStroke.Color = Color3.fromRGB(255, 255, 255)
-    UIStroke.Thickness = 2
-    UIStroke.Parent = ToggleButton
-    
-    -- Buat tombol draggable
-    local dragging = false
-    local dragInput, dragStart, startPos
-    
-    ToggleButton.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            dragStart = input.Position
-            startPos = ToggleButton.Position
-            
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                end
-            end)
-        end
-    end)
-    
-    ToggleButton.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement then
-            dragInput = input
-        end
-    end)
-    
-    game:GetService("UserInputService").InputChanged:Connect(function(input)
-        if dragging and (input == dragInput) then
-            local delta = input.Position - dragStart
-            ToggleButton.Position = UDim2.new(
-                startPos.X.Scale, 
-                startPos.X.Offset + delta.X,
-                startPos.Y.Scale, 
-                startPos.Y.Offset + delta.Y
-            )
-        end
-    end)
-    
-    -- Fungsi toggle GUI saat tombol ditekan
-    ToggleButton.MouseButton1Click:Connect(function()
-        toggleGUI()
-    end)
-    
-    -- Tambahkan animasi hover
-    ToggleButton.MouseEnter:Connect(function()
-        game:GetService("TweenService"):Create(
-            ToggleButton,
-            TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-            {BackgroundTransparency = 0.1}
-        ):Play()
-    end)
-    
-    ToggleButton.MouseLeave:Connect(function()
-        game:GetService("TweenService"):Create(
-            ToggleButton,
-            TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-            {BackgroundTransparency = 0.3}
-        ):Play()
-    end)
-    
-    MobileToggleButton = ToggleButton
-    print("[MOBILE] Mobile toggle button created")
-    
-    return ToggleButton
-end
-
-----------------------------------------------------------------
 -- ====================== WINDUI GUI ========================
 ----------------------------------------------------------------
 
@@ -2151,12 +2054,6 @@ local function toggleGUI()
         end
         guiVisible = false
         print("[GUI] GUI hidden")
-        
-        -- Update tombol mobile jika ada
-        if MobileToggleButton then
-            MobileToggleButton.Text = "📱\nGUI"
-            MobileToggleButton.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
-        end
     else
         MainWindow:Open()
         if MainWindow.OpenButtonMain then
@@ -2164,12 +2061,6 @@ local function toggleGUI()
         end
         guiVisible = true
         print("[GUI] GUI shown")
-        
-        -- Update tombol mobile jika ada
-        if MobileToggleButton then
-            MobileToggleButton.Text = "📱\nOPEN"
-            MobileToggleButton.BackgroundColor3 = Color3.fromRGB(0, 200, 83)
-        end
     end
 end
 
@@ -2183,8 +2074,8 @@ local function createMainWindow()
         ScreenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
         
         local MainFrame = Instance.new("Frame")
-        MainFrame.Size = UDim2.new(0, 350, 0, 450)
-        MainFrame.Position = UDim2.new(0.5, -175, 0.5, -225)
+        MainFrame.Size = UDim2.new(0, 400, 0, 500)
+        MainFrame.Position = UDim2.new(0.5, -200, 0.5, -250)
         MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
         MainFrame.BorderSizePixel = 0
         MainFrame.Active = true
@@ -2192,16 +2083,11 @@ local function createMainWindow()
         MainFrame.Visible = guiVisible
         MainFrame.Parent = ScreenGui
         
-        -- Buat corner
-        local UICorner = Instance.new("UICorner")
-        UICorner.CornerRadius = UDim.new(0, 8)
-        UICorner.Parent = MainFrame
-        
         local Title = Instance.new("TextLabel")
         Title.Size = UDim2.new(1, 0, 0, 40)
         Title.Position = UDim2.new(0, 0, 0, 0)
         Title.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
-        Title.Text = "JawirScript - Mobile GUI"
+        Title.Text = "JawirScript - Fallback GUI"
         Title.TextColor3 = Color3.fromRGB(255, 255, 255)
         Title.Font = Enum.Font.SourceSansBold
         Title.TextSize = 18
@@ -2219,102 +2105,47 @@ local function createMainWindow()
         CloseButton.MouseButton1Click:Connect(function()
             MainFrame.Visible = not MainFrame.Visible
             guiVisible = MainFrame.Visible
-            
-            -- Update tombol mobile
-            if MobileToggleButton then
-                if guiVisible then
-                    MobileToggleButton.Text = "📱\nOPEN"
-                    MobileToggleButton.BackgroundColor3 = Color3.fromRGB(0, 200, 83)
-                else
-                    MobileToggleButton.Text = "📱\nGUI"
-                    MobileToggleButton.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
-                end
-            end
         end)
         
         local ScrollFrame = Instance.new("ScrollingFrame")
         ScrollFrame.Size = UDim2.new(1, -10, 1, -50)
         ScrollFrame.Position = UDim2.new(0, 5, 0, 45)
         ScrollFrame.BackgroundTransparency = 1
-        ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 600)
-        ScrollFrame.ScrollBarThickness = 8
+        ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 800)
+        ScrollFrame.ScrollBarThickness = 5
         ScrollFrame.Parent = MainFrame
         
         local UIListLayout = Instance.new("UIListLayout")
-        UIListLayout.Padding = UDim.new(0, 8)
+        UIListLayout.Padding = UDim.new(0, 5)
         UIListLayout.Parent = ScrollFrame
         
-        -- Tambahkan tombol-tombol utama dengan ukuran lebih besar untuk mobile
+        -- Tambahkan tombol-tombol utama
         local buttons = {
-            {"⛏️ Auto Mine", toggleAutoMine},
-            {"⚔️ Auto Attack", toggleAutoAttack},
-            {"🗿 Rock ESP", toggleRockESP},
-            {"👹 Mob ESP", toggleMobESP},
-            {"🎯 Mine Nearest", forceMineNearest},
-            {"🎯 Attack Nearest", forceAttackNearest},
-            {"👻 Noclip", toggleNoclip},
-            {"🧹 Clean ESP", cleanupESP},
-            {"🛑 Stop All", function()
-                stopAutoHammer()
-                AutoMineEnabled = false
-                flags.AutoAttackEnabled = false
-                IsMining = false
-                IsAttacking = false
-                disableNoclip()
-            end}
+            {"Toggle Auto Mine", toggleAutoMine},
+            {"Toggle Auto Attack", toggleAutoAttack},
+            {"Toggle Rock ESP", toggleRockESP},
+            {"Toggle Mob ESP", toggleMobESP},
+            {"Force Mine Nearest", forceMineNearest},
+            {"Force Attack Nearest", forceAttackNearest},
+            {"Toggle Noclip", toggleNoclip},
+            {"Cleanup ESP", cleanupESP}
         }
         
         for i, buttonData in ipairs(buttons) do
             local button = Instance.new("TextButton")
-            button.Size = UDim2.new(1, -10, 0, 50) -- Lebih besar untuk mobile
+            button.Size = UDim2.new(1, -10, 0, 40)
             button.Text = buttonData[1]
             button.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
             button.TextColor3 = Color3.fromRGB(255, 255, 255)
-            button.Font = Enum.Font.SourceSansSemibold
+            button.Font = Enum.Font.SourceSans
             button.TextSize = 16
             button.Parent = ScrollFrame
-            
-            -- Buat corner untuk tombol
-            local buttonCorner = Instance.new("UICorner")
-            buttonCorner.CornerRadius = UDim.new(0, 6)
-            buttonCorner.Parent = button
-            
-            -- Tambahkan efek hover
-            button.MouseEnter:Connect(function()
-                game:GetService("TweenService"):Create(
-                    button,
-                    TweenInfo.new(0.2),
-                    {BackgroundColor3 = Color3.fromRGB(80, 80, 90)}
-                ):Play()
-            end)
-            
-            button.MouseLeave:Connect(function()
-                game:GetService("TweenService"):Create(
-                    button,
-                    TweenInfo.new(0.2),
-                    {BackgroundColor3 = Color3.fromRGB(60, 60, 70)}
-                ):Play()
-            end)
-            
             button.MouseButton1Click:Connect(function()
                 buttonData[2]()
-                
-                -- Animasi klik
-                game:GetService("TweenService"):Create(
-                    button,
-                    TweenInfo.new(0.1),
-                    {BackgroundColor3 = Color3.fromRGB(100, 100, 110)}
-                ):Play()
-                wait(0.1)
-                game:GetService("TweenService"):Create(
-                    button,
-                    TweenInfo.new(0.1),
-                    {BackgroundColor3 = Color3.fromRGB(60, 60, 70)}
-                ):Play()
             end)
         end
         
-        print("[GUI] Fallback Mobile GUI created successfully")
+        print("[GUI] Fallback GUI created successfully")
         
         return {
             Open = function() 
@@ -2344,26 +2175,26 @@ local function createMainWindow()
     
     local success, window = pcall(function()
         return WindUI:CreateWindow({
-            Title = "JawirScript - Mobile",
-            Folder = "JawirScriptMobileSystem",
+            Title = "JawirScript - The Forge",
+            Folder = "JawirScriptForgeSystem",
             Theme = "Dark",
-            Size = UDim2.new(0, 400, 0, 500), -- Lebih kecil untuk mobile
+            Size = UDim2.new(0, 600, 0, 700),
             Radius = 12,
             Resizable = true,
             Acrylic = true,
             Background = Color3.fromRGB(30, 30, 35),
-            Author = "Mobile Compatible - Tap 📱 button",
+            Author = "Auto Forge + Auto Mine + Auto Attack System",
             ToggleKey = Enum.KeyCode.RightControl,
             OpenButton = {
-                Title = "📱 Jawir",
-                Icon = "smartphone",
+                Title = "Jawir Script",
+                Icon = "hammer",
                 Enabled = true,
-                Position = UDim2.new(0.5, -60, 0, 20),
+                Position = UDim2.new(0.5, -75, 0, 15),
                 OnlyIcon = false,
                 Draggable = true,
                 Color = ColorSequence.new(
-                    Color3.fromHex("#2196F3"),
-                    Color3.fromHex("#4CAF50")
+                    Color3.fromHex("#FF6B6B"),
+                    Color3.fromHex("#4ECDC4")
                 )
             }
         })
@@ -2376,70 +2207,97 @@ local function createMainWindow()
     end
     
     MainWindow = window
-    print("[GUI] WindUI Mobile Window created successfully")
+    print("[GUI] WindUI Window created successfully")
     
-    -- Buat tabs sederhana untuk mobile
+    -- Buat tabs sederhana saja untuk menghindari error
     pcall(function()
-        -- Tab 1: Main Controls
-        local MainTab = MainWindow:Tab({
-            Title = "📱 Main",
-            Desc = "Main Controls"
+        -- Tab 1: Forge System
+        local ForgeTab = MainWindow:Tab({
+            Title = "⚒️ Forge",
+            Desc = "Auto Forge Skipper"
         })
         
-        MainTab:Toggle({
+        ForgeTab:Button({
+            Title = "🔧 Activate Hooks",
+            Desc = "Activate minigame hooks",
+            Callback = function()
+                hookMinigameModules()
+            end
+        })
+        
+        ForgeTab:Toggle({
+            Title = "🔨 Auto Hammer",
+            Desc = "Auto hammer during minigame",
+            Value = flags.AutoHammerEnabled,
+            Callback = function(value)
+                flags.AutoHammerEnabled = value
+            end
+        })
+        
+        -- Tab 2: Auto Mine
+        local MineTab = MainWindow:Tab({
             Title = "⛏️ Auto Mine",
-            Desc = "Toggle auto mining",
+            Desc = "Auto Mine System"
+        })
+        
+        MineTab:Toggle({
+            Title = "⛏️ Enable Auto Mine",
+            Desc = "Toggle auto mining system",
             Value = AutoMineEnabled,
             Callback = function(value)
                 AutoMineEnabled = toggleAutoMine()
             end
         })
         
-        MainTab:Toggle({
-            Title = "⚔️ Auto Attack",
-            Desc = "Toggle auto attack",
-            Value = flags.AutoAttackEnabled,
-            Callback = function(value)
-                flags.AutoAttackEnabled = toggleAutoAttack()
-            end
-        })
-        
-        MainTab:Toggle({
-            Title = "👻 Noclip",
-            Desc = "Toggle noclip",
+        MineTab:Toggle({
+            Title = "👻 Enable Noclip",
+            Desc = "Enable noclip while mining",
             Value = NOCLIP_ENABLED,
             Callback = function(value)
                 NOCLIP_ENABLED = toggleNoclip()
             end
         })
         
-        MainTab:Divider()
-        
-        MainTab:Button({
-            Title = "🎯 Mine Now",
-            Desc = "Mine nearest rock",
+        MineTab:Button({
+            Title = "🎯 Mine Nearest Rock",
+            Desc = "Immediately mine nearest rock",
             Callback = function()
                 forceMineNearest()
             end
         })
         
-        MainTab:Button({
-            Title = "🎯 Attack Now",
-            Desc = "Attack nearest mob",
+        -- Tab 3: Auto Attack
+        local AttackTab = MainWindow:Tab({
+            Title = "⚔️ Auto Attack",
+            Desc = "Auto Attack System"
+        })
+        
+        AttackTab:Toggle({
+            Title = "⚔️ Enable Auto Attack",
+            Desc = "Toggle auto attack system",
+            Value = flags.AutoAttackEnabled,
+            Callback = function(value)
+                flags.AutoAttackEnabled = toggleAutoAttack()
+            end
+        })
+        
+        AttackTab:Button({
+            Title = "🎯 Attack Nearest Mob",
+            Desc = "Immediately attack nearest mob",
             Callback = function()
                 forceAttackNearest()
             end
         })
         
-        -- Tab 2: ESP Settings
+        -- Tab 4: ESP Settings
         local ESPTab = MainWindow:Tab({
-            Title = "👁️ ESP",
-            Desc = "ESP Settings"
+            Title = "🗿 ESP",
+            Desc = "Rock & Mob ESP Settings"
         })
         
         ESPTab:Toggle({
-            Title = "🗿 Rock ESP",
-            Desc = "Toggle rock ESP",
+            Title = "👁️ Rock ESP",
+            Desc = "Toggle rock ESP visibility",
             Value = ESPEnabled,
             Callback = function(value)
                 ESPEnabled = toggleRockESP()
@@ -2448,7 +2306,7 @@ local function createMainWindow()
         
         ESPTab:Toggle({
             Title = "👹 Mob ESP",
-            Desc = "Toggle mob ESP",
+            Desc = "Toggle mob ESP visibility",
             Value = MobESPEnabled,
             Callback = function(value)
                 MobESPEnabled = toggleMobESP()
@@ -2456,37 +2314,14 @@ local function createMainWindow()
         })
         
         ESPTab:Button({
-            Title = "🧹 Clean ESP",
-            Desc = "Remove all ESP",
+            Title = "🧹 Clear All ESP",
+            Desc = "Remove all ESP highlights",
             Callback = function()
                 cleanupESP()
             end
         })
         
-        -- Tab 3: Forge
-        local ForgeTab = MainWindow:Tab({
-            Title = "⚒️ Forge",
-            Desc = "Forge Settings"
-        })
-        
-        ForgeTab:Button({
-            Title = "🔧 Activate Hooks",
-            Desc = "Activate forge hooks",
-            Callback = function()
-                hookMinigameModules()
-            end
-        })
-        
-        ForgeTab:Toggle({
-            Title = "🔨 Auto Hammer",
-            Desc = "Auto hammer minigame",
-            Value = flags.AutoHammerEnabled,
-            Callback = function(value)
-                flags.AutoHammerEnabled = value
-            end
-        })
-        
-        print("[GUI] Mobile tabs created successfully")
+        print("[GUI] All tabs created successfully")
     end)
     
     return MainWindow
@@ -2497,7 +2332,7 @@ end
 ----------------------------------------------------------------
 
 local function setupEventListeners()
-    -- GUI keybind listener untuk PC
+    -- GUI keybind listener
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if not gameProcessed then
             if input.KeyCode == Enum.KeyCode[toggleKeybind] then
@@ -2551,8 +2386,7 @@ local function initializeSystem()
     print("========================================")
     print("Features: Forge Skip + Auto Mine + Auto Attack")
     print("ESP: Hanya deteksi MOB (TIDAK deteksi PLAYER)")
-    print("Mobile: Tap 📱 button to toggle GUI")
-    print("PC: Press RightControl to toggle GUI")
+    print("GUI: Press RightControl to toggle")
     print("========================================")
     
     -- Initialize player blacklist
@@ -2565,9 +2399,6 @@ local function initializeSystem()
     
     -- Create GUI
     pcall(createMainWindow)
-    
-    -- Buat tombol mobile toggle
-    pcall(createMobileToggleButton)
     
     -- Setup event listeners
     pcall(setupEventListeners)
@@ -2610,12 +2441,6 @@ local function initializeSystem()
                 task.cancel(ESPConnection)
                 ESPConnection = nil
             end
-            
-            -- Hapus tombol mobile
-            if MobileToggleButton then
-                MobileToggleButton:Destroy()
-                MobileToggleButton = nil
-            end
         end
     end)
     
@@ -2624,17 +2449,10 @@ local function initializeSystem()
         pcall(stopAutoHammer)
         pcall(cleanupESP)
         pcall(disableNoclip)
-        
-        -- Hapus tombol mobile
-        if MobileToggleButton then
-            MobileToggleButton:Destroy()
-            MobileToggleButton = nil
-        end
     end)
     
     print("[SYSTEM] Initialization complete")
-    print("[SYSTEM] Mobile: Tap 📱 button to toggle GUI")
-    print("[SYSTEM] PC: Press " .. toggleKeybind .. " to toggle GUI")
+    print("[SYSTEM] Press " .. toggleKeybind .. " to toggle GUI")
     print("========================================")
 end
 
@@ -2666,8 +2484,5 @@ return {
     CleanupESP = cleanupESP,
     
     -- GUI
-    ToggleGUI = toggleGUI,
-    
-    -- Mobile
-    CreateMobileToggle = createMobileToggleButton
+    ToggleGUI = toggleGUI
 }
