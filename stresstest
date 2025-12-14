@@ -3,7 +3,6 @@
 -- ============================================================
 -- Gabungan sistem: Forge Skipper + Auto Mine System + Mob ESP & Auto Attack
 -- TIDAK DETEKSI PLAYER - HANYA MOB
--- GUI LENGKAP DENGAN SEMUA SETTING
 -- ============================================================
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -387,15 +386,15 @@ local flags = {
     SkipPourEnabled = true,
     AutoInitialize = true,
     AutoAttackEnabled = true,
-    AttackWhileMining = true,
-    DebugMode = false
+    AttackWhileMining = true
 }
 
 ----------------------------------------------------------------
--- LOAD WINDUI LIBRARY
+-- LOAD WINDUI LIBRARY - FIXED VERSION
 ----------------------------------------------------------------
 local function loadUILibrary()
     local success, lib = pcall(function()
+        -- Coba load dari raw.githubusercontent.com
         local url = "https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"
         local response = game:HttpGet(url, true)
         return loadstring(response)()
@@ -407,6 +406,7 @@ local function loadUILibrary()
         return true
     else
         warn("[WINDUI] Failed to load WindUI Library")
+        -- Coba alternatif
         local success2, lib2 = pcall(function()
             return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/src/main.lua"))()
         end)
@@ -431,6 +431,7 @@ local function initializeRemotes()
     
     if not success then
         print("[SYSTEM] Knit not found, trying alternative")
+        -- Coba cara lain untuk menemukan remotes
         for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
             if remote.Name == "ChangeSequence" and remote:IsA("RemoteFunction") then
                 ForgeServiceRF = remote
@@ -460,6 +461,7 @@ end
 ----------------------------------------------------------------
 -- ==================== FORGE SKIPPER ========================
 ----------------------------------------------------------------
+
 local function getHammerMinigameUI()
     local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
     local forgeUI = playerGui:WaitForChild("Forge", 5)
@@ -495,7 +497,7 @@ local function isMinigameTimerComplete()
 end
 
 local function debugLog(message)
-    if flags.DebugMode then
+    if debugMode then
         print("[DEBUG] " .. message)
     end
 end
@@ -698,21 +700,26 @@ end
 ----------------------------------------------------------------
 -- ====================== ESP SYSTEM =========================
 ----------------------------------------------------------------
+
+-- FUNGSI UNTUK CEK APAKAH INI PLAYER
 local function isPlayerModel(model)
     if not model or not model:IsA("Model") then
         return false
     end
     
+    -- CEK 1: Apakah ini character milik player
     for _, player in pairs(Players:GetPlayers()) do
         if player.Character and player.Character == model then
             return true
         end
     end
     
+    -- CEK 2: Apakah ini local player
     if model == LocalPlayer.Character then
         return true
     end
     
+    -- CEK 3: Apakah model memiliki komponen khusus player
     local hasLeaderstats = model:FindFirstChild("leaderstats")
     local hasPlayerScripts = model:FindFirstChild("PlayerScripts")
     local hasPlayerGui = model:FindFirstChild("PlayerGui")
@@ -722,6 +729,7 @@ local function isPlayerModel(model)
         return true
     end
     
+    -- CEK 4: Apakah nama model sama dengan nama player
     if PlayerBlacklist[model.Name] then
         return true
     end
@@ -813,6 +821,7 @@ local function createRockESP(obj, rockType)
 end
 
 local function createMobESP(obj, mobType, model)
+    -- CEK APAKAH INI PLAYER - JIKA YA, SKIP
     if isPlayerModel(model) then
         print("[MOB ESP] Skipping player model: " .. model.Name)
         return
@@ -873,6 +882,7 @@ local function createMobESP(obj, mobType, model)
     DistanceLabel.TextSize = config.TextSize - 2
     DistanceLabel.Font = Enum.Font.SourceSans
     
+    -- Health Bar
     if config.HealthBar then
         local healthBarFrame = Instance.new("Frame")
         healthBarFrame.Name = "HealthBarFrame"
@@ -955,6 +965,7 @@ local function updateRockESP(obj, espData)
     if espData.Billboard and espData.Billboard:FindFirstChild("DistanceLabel") then
         espData.Billboard.DistanceLabel.Text = string.format("%.0f studs", distance)
         
+        -- Update color based on distance
         if distance < 50 then
             espData.Billboard.TypeLabel.TextColor3 = Color3.new(0, 1, 0)
         elseif distance < 100 then
@@ -971,6 +982,7 @@ local function updateRockESP(obj, espData)
             espData.Light.Brightness = math.clamp(30 / distance, 1, 3)
         end
         
+        -- Filter by selected rock type
         local shouldShow = distance <= ESPDistance
         if SelectedRockType ~= "Any" and SelectedRockType ~= espData.Type then
             shouldShow = false
@@ -990,6 +1002,7 @@ local function updateMobESP(obj, espData)
         return false
     end
     
+    -- CEK APAKAH INI PLAYER - JIKA YA, HAPUS
     if isPlayerModel(espData.Model) then
         print("[MOB ESP] Removing ESP from player: " .. espData.Model.Name)
         return false
@@ -1005,20 +1018,23 @@ local function updateMobESP(obj, espData)
     if espData.Billboard and espData.Billboard:FindFirstChild("DistanceLabel") then
         espData.Billboard.DistanceLabel.Text = string.format("%.0f studs", distance)
         
+        -- Update color based on distance and priority
         if distance < 30 then
-            espData.Billboard.TypeLabel.TextColor3 = Color3.new(1, 0, 0)
+            espData.Billboard.TypeLabel.TextColor3 = Color3.new(1, 0, 0)  -- Red when very close
         elseif distance < 100 then
-            espData.Billboard.TypeLabel.TextColor3 = Color3.new(1, 0.5, 0)
+            espData.Billboard.TypeLabel.TextColor3 = Color3.new(1, 0.5, 0) -- Orange when close
         else
             espData.Billboard.TypeLabel.TextColor3 = espData.Config.Color
         end
         
+        -- Update health bar if exists
         if espData.HealthBar and espData.Model then
             local humanoid = espData.Model:FindFirstChildWhichIsA("Humanoid")
             if humanoid then
                 local healthPercent = humanoid.Health / humanoid.MaxHealth
                 espData.HealthBar.Size = UDim2.new(healthPercent, 0, 1, 0)
                 
+                -- Health bar color based on health
                 if healthPercent > 0.6 then
                     espData.HealthBar.BackgroundColor3 = Color3.new(0, 1, 0)
                 elseif healthPercent > 0.3 then
@@ -1041,6 +1057,7 @@ local function updateMobESP(obj, espData)
             espData.Light.Brightness = math.clamp(40 / distance, 2, 5)
         end
         
+        -- Filter by selected mob type
         local shouldShow = distance <= MobESPDistance
         if SelectedMobType ~= "Any" and SelectedMobType ~= espData.Type then
             shouldShow = false
@@ -1066,7 +1083,9 @@ local function scanForRocks()
     for _, obj in pairs(Workspace:GetDescendants()) do
         if obj:IsA("Model") then
             local rockType = obj.Name
+            -- Check if it's a known rock type
             if RockConfigs[rockType] then
+                -- Find the main part of the rock
                 local mainPart = obj:FindFirstChild("MainPart") or 
                                 obj:FindFirstChild("Part") or 
                                 obj:FindFirstChild("Handle") or
@@ -1082,19 +1101,25 @@ local function scanForRocks()
     end
 end
 
+-- FUNGSI UNTUK SCAN MOB (TANPA PLAYER)
 local function scanForMobs()
+    -- Mencari folder Living di Workspace
     local livingFolder = Workspace:FindFirstChild("Living")
     
     if livingFolder then
+        -- Scan semua model di dalam folder Living
         for _, mobModel in pairs(livingFolder:GetChildren()) do
             if mobModel:IsA("Model") then
+                -- CEK APAKAH INI PLAYER - JIKA YA, SKIP
                 if isPlayerModel(mobModel) then
                     continue
                 end
                 
                 local mobType = mobModel.Name
                 
+                -- Check if it's a known mob type
                 if MobConfigs[mobType] then
+                    -- Find the humanoid root part or main part
                     local humanoidRootPart = mobModel:FindFirstChild("HumanoidRootPart")
                     local torso = mobModel:FindFirstChild("Torso") or mobModel:FindFirstChild("UpperTorso")
                     local head = mobModel:FindFirstChild("Head")
@@ -1107,6 +1132,7 @@ local function scanForMobs()
                         end
                     end
                 else
+                    -- Jika mob tidak dikenal tapi punya humanoid, buat ESP default
                     local humanoid = mobModel:FindFirstChildWhichIsA("Humanoid")
                     if humanoid and not isPlayerModel(mobModel) then
                         local humanoidRootPart = mobModel:FindFirstChild("HumanoidRootPart")
@@ -1123,15 +1149,19 @@ local function scanForMobs()
             end
         end
     else
+        -- Jika tidak ada folder Living, coba scan semua model di Workspace yang mungkin mob
         for _, obj in pairs(Workspace:GetDescendants()) do
             if obj:IsA("Model") then
+                -- CEK APAKAH INI PLAYER - JIKA YA, SKIP
                 if isPlayerModel(obj) then
                     continue
                 end
                 
                 local mobType = obj.Name
                 
+                -- Check if it's a known mob type
                 if MobConfigs[mobType] then
+                    -- Find the humanoid root part or main part
                     local humanoidRootPart = obj:FindFirstChild("HumanoidRootPart")
                     local torso = obj:FindFirstChild("Torso") or obj:FindFirstChild("UpperTorso")
                     local head = obj:FindFirstChild("Head")
@@ -1151,11 +1181,14 @@ end
 
 local function autoESPUpdate()
     while true do
+        -- Scan for new rocks and mobs every 3 seconds
         scanForRocks()
         scanForMobs()
         
+        -- Update existing rock ESP
         for obj, espData in pairs(highlightedObjects) do
             if not updateRockESP(obj, espData) then
+                -- Clean up if object no longer exists
                 if espData.Billboard then espData.Billboard:Destroy() end
                 if espData.Highlight then espData.Highlight:Destroy() end
                 if espData.Light then espData.Light:Destroy() end
@@ -1163,8 +1196,11 @@ local function autoESPUpdate()
             end
         end
         
+        -- Update existing mob ESP
         for obj, espData in pairs(highlightedMobs) do
+            -- CEK APAKAH INI PLAYER SEBELUM UPDATE
             if isPlayerModel(espData.Model) then
+                -- HAPUS ESP UNTUK PLAYER
                 if espData.Billboard then espData.Billboard:Destroy() end
                 if espData.Highlight then espData.Highlight:Destroy() end
                 if espData.Light then espData.Light:Destroy() end
@@ -1172,6 +1208,7 @@ local function autoESPUpdate()
                 if espData.HealthText then espData.HealthText:Destroy() end
                 highlightedMobs[obj] = nil
             elseif not updateMobESP(obj, espData) then
+                -- Clean up if object no longer exists
                 if espData.Billboard then espData.Billboard:Destroy() end
                 if espData.Highlight then espData.Highlight:Destroy() end
                 if espData.Light then espData.Light:Destroy() end
@@ -1186,6 +1223,7 @@ local function autoESPUpdate()
 end
 
 local function cleanupESP()
+    -- Cleanup rock ESP
     for obj, espData in pairs(highlightedObjects) do
         if espData.Billboard then espData.Billboard:Destroy() end
         if espData.Highlight then espData.Highlight:Destroy() end
@@ -1193,6 +1231,7 @@ local function cleanupESP()
     end
     highlightedObjects = {}
     
+    -- Cleanup mob ESP
     for obj, espData in pairs(highlightedMobs) do
         if espData.Billboard then espData.Billboard:Destroy() end
         if espData.Highlight then espData.Highlight:Destroy() end
@@ -1247,24 +1286,21 @@ end
 
 local function setESPDistance(distance)
     ESPDistance = math.clamp(distance, 10, 2000)
-    return ESPDistance
 end
 
 local function setMobESPDistance(distance)
     MobESPDistance = math.clamp(distance, 10, 1000)
-    return MobESPDistance
 end
 
 local function setRockType(rockType)
     SelectedRockType = rockType
-    return SelectedRockType
 end
 
 local function setMobType(mobType)
     SelectedMobType = mobType
-    return SelectedMobType
 end
 
+-- Function to get all available rock types
 local function getAllRockTypes()
     local rockTypes = {}
     for rockName, _ in pairs(RockConfigs) do
@@ -1274,6 +1310,7 @@ local function getAllRockTypes()
     return rockTypes
 end
 
+-- Function to get all available mob types (HANYA MOB, TIDAK PLAYER)
 local function getAllMobTypes()
     local mobTypes = {}
     for mobName, config in pairs(MobConfigs) do
@@ -1321,6 +1358,7 @@ local function getMobsCountByType()
     
     for obj, espData in pairs(highlightedMobs) do
         if espData.Type then
+            -- SKIP PLAYER
             if isPlayerModel(espData.Model) then
                 continue
             end
@@ -1338,8 +1376,101 @@ local function getMobsCountByType()
 end
 
 ----------------------------------------------------------------
+-- ==================== NOCLIP FUNCTIONS ======================
+----------------------------------------------------------------
+
+-- FUNGSI UNTUK ENABLE NOCLIP
+local function enableNoclip()
+    if not NOCLIP_ENABLED then 
+        print("[NOCLIP] Noclip disabled in settings")
+        return 
+    end
+    
+    local character = LocalPlayer.Character
+    if not character then 
+        print("[NOCLIP] No character found")
+        return 
+    end
+    
+    local success = pcall(function()
+        -- Set semua bagian menjadi tidak bisa tabrakan
+        for _, part in pairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+        
+        -- Tambahkan BodyVelocity untuk kontrol yang lebih baik
+        local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+        if humanoidRootPart then
+            -- Hapus BodyVelocity lama jika ada
+            local oldVelocity = humanoidRootPart:FindFirstChild("NoclipVelocity")
+            if oldVelocity then
+                oldVelocity:Destroy()
+            end
+            
+            -- Buat BodyVelocity baru
+            local bodyVelocity = Instance.new("BodyVelocity")
+            bodyVelocity.Name = "NoclipVelocity"
+            bodyVelocity.MaxForce = Vector3.new(40000, 40000, 40000)
+            bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+            bodyVelocity.Parent = humanoidRootPart
+        end
+        
+        print("[NOCLIP] Noclip enabled successfully")
+    end)
+    
+    if not success then
+        print("[NOCLIP] Failed to enable noclip")
+    end
+end
+
+-- FUNGSI UNTUK DISABLE NOCLIP
+local function disableNoclip()
+    local character = LocalPlayer.Character
+    if not character then 
+        print("[NOCLIP] No character found")
+        return 
+    end
+    
+    local success = pcall(function()
+        -- Set semua bagian menjadi bisa tabrakan
+        for _, part in pairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = true
+            end
+        end
+        
+        -- Hapus BodyVelocity
+        local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+        if humanoidRootPart then
+            local bodyVelocity = humanoidRootPart:FindFirstChild("NoclipVelocity")
+            if bodyVelocity then
+                bodyVelocity:Destroy()
+            end
+        end
+        
+        print("[NOCLIP] Noclip disabled successfully")
+    end)
+    
+    if not success then
+        print("[NOCLIP] Failed to disable noclip")
+    end
+end
+
+-- FUNGSI UNTUK MENGUPDATE NOCLIP SETIAP FRAME SAAT MINING/ATTACKING
+local function updateNoclipDuringAction()
+    if (AutoMineEnabled and IsMining) or (flags.AutoAttackEnabled and IsAttacking) then
+        if NOCLIP_ENABLED then
+            enableNoclip()
+        end
+    end
+end
+
+----------------------------------------------------------------
 -- ==================== AUTO ATTACK SYSTEM ====================
 ----------------------------------------------------------------
+
 local function callAttackRemotes()
     local success1, result1 = pcall(function()
         local args = {"Weapon"}
@@ -1367,10 +1498,12 @@ local function getMobsData()
     
     for obj, espData in pairs(highlightedMobs) do
         if obj and obj.Parent and espData.Type then
+            -- SKIP PLAYER - Pastikan bukan player
             if isPlayerModel(espData.Model) then
                 continue
             end
             
+            -- Check if mob is alive
             local isAlive = true
             if espData.Model then
                 local humanoid = espData.Model:FindFirstChildWhichIsA("Humanoid")
@@ -1380,6 +1513,7 @@ local function getMobsData()
             end
             
             if isAlive then
+                -- Filter by selected mob type
                 if SelectedMobType == "Any" or SelectedMobType == espData.Type then
                     local distance = (obj.Position - humanoidRootPart.Position).Magnitude
                     
@@ -1399,6 +1533,7 @@ local function getMobsData()
         end
     end
     
+    -- Sort by priority first, then distance
     table.sort(mobs, function(a, b)
         if a.Priority ~= b.Priority then
             return a.Priority < b.Priority
@@ -1435,61 +1570,37 @@ local function findPriorityMobs()
     return priorityMobs
 end
 
-local function enableNoclip()
-    if not NOCLIP_ENABLED then return end
-    
-    local character = LocalPlayer.Character
-    if not character then return end
-    
-    for _, part in pairs(character:GetDescendants()) do
-        if part:IsA("BasePart") and part.CanCollide then
-            part.CanCollide = false
-        end
-    end
-end
-
-local function disableNoclip()
-    local character = LocalPlayer.Character
-    if not character then return end
-    
-    for _, part in pairs(character:GetDescendants()) do
-        if part:IsA("BasePart") then
-            part.CanCollide = true
-        end
-    end
-end
-
 local function tweenToTargetAndAttack(targetData, isMob)
     if not targetData or not targetData.Position then 
-        print("[AUTO ATTACK] Invalid target data")
+        print("[TWEEEN] No target data")
         return false 
     end
     
     local character = LocalPlayer.Character
     if not character then 
-        print("[AUTO ATTACK] No character found")
+        print("[TWEEEN] No character")
         return false 
     end
     
     local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
     if not humanoidRootPart then 
-        print("[AUTO ATTACK] No HumanoidRootPart found")
+        print("[TWEEEN] No HumanoidRootPart")
         return false 
     end
     
-    if isMob and targetData.Model and isPlayerModel(targetData.Model) then
-        print("[AUTO ATTACK] Cannot attack player: " .. targetData.Model.Name)
+    -- CEK APAKAH INI PLAYER - JIKA YA, BATALKAN
+    if isMob and isPlayerModel(targetData.Model) then
+        print("[TWEEEN] Cannot attack player: " .. targetData.Model.Name)
         return false
     end
     
     if isMob then
         CurrentAttackTarget = targetData
-        print("[AUTO ATTACK] Setting attack target: " .. targetData.Type)
     else
         CurrentMineTarget = targetData
-        print("[AUTO MINE] Setting mine target: " .. targetData.Type)
     end
     
+    -- Enable noclip sebelum mulai bergerak
     enableNoclip()
     
     local targetPosition
@@ -1503,8 +1614,8 @@ local function tweenToTargetAndAttack(targetData, isMob)
     local speed = isMob and ATTACK_SPEED or MINING_SPEED
     local duration = math.max(0.5, distance / speed)
     
-    print(string.format("[AUTO %s] Moving to target: %s (Distance: %.0f studs, Duration: %.1f sec)", 
-        isMob and "ATTACK" or "MINE", targetData.Type, distance, duration))
+    print(string.format("[TWEEEN] Moving to %s at %.0f studs/sec (%.1f seconds)", 
+        targetData.Type, speed, duration))
     
     local tweenInfo = TweenInfo.new(
         duration,
@@ -1519,45 +1630,43 @@ local function tweenToTargetAndAttack(targetData, isMob)
     tween:Play()
     
     local completed = false
-    tween.Completed:Connect(function()
+    local connection = tween.Completed:Connect(function()
         completed = true
     end)
     
+    -- Selama tween berjalan, update noclip
     local startTime = tick()
-    while not completed and tick() - startTime < duration + 5 do
+    while not completed and tick() - startTime < duration + 2 do
         task.wait(0.1)
-        enableNoclip()
+        enableNoclip() -- Pastikan noclip tetap aktif
     end
     
+    connection:Disconnect()
+    
     if completed then
-        print(string.format("[AUTO %s] Arrived at target, starting action...", isMob and "ATTACK" or "MINE"))
-        
+        print("[TWEEEN] Arrived at target")
         local actionStartTime = tick()
         local actionCount = 0
         
         local maxTime = isMob and 10 or 15
         local actionDelay = isMob and ATTACK_DELAY or MINE_DELAY
         
-        while (isMob and IsAttacking) or (not isMob and AutoMineEnabled and IsMining) do
-            if tick() - actionStartTime > maxTime then
-                print(string.format("[AUTO %s] Max time reached", isMob and "ATTACK" or "MINE"))
-                break
-            end
-            
+        while (isMob and IsAttacking) or (not isMob and AutoMineEnabled and IsMining) and tick() - actionStartTime < maxTime do
             if not targetData.Object or not targetData.Object.Parent then
-                print("[AUTO " .. (isMob and "ATTACK" or "MINE") .. "] Target disappeared")
+                print("[TWEEEN] Target disappeared")
                 break
             end
             
-            if isMob and targetData.Model and isPlayerModel(targetData.Model) then
-                print("[AUTO ATTACK] Target is player, stopping attack")
+            -- CEK APAKAH INI PLAYER SEBELUM MENYERANG
+            if isMob and isPlayerModel(targetData.Model) then
+                print("[TWEEEN] Target is player, stopping")
                 break
             end
             
             if isMob and targetData.Model then
                 local humanoid = targetData.Model:FindFirstChildWhichIsA("Humanoid")
                 if humanoid and humanoid.Health <= 0 then
-                    print("[AUTO ATTACK] Mob defeated: " .. targetData.Type)
+                    print("[TWEEEN] Target defeated")
                     break
                 end
             end
@@ -1572,19 +1681,19 @@ local function tweenToTargetAndAttack(targetData, isMob)
             actionCount = actionCount + 1
             
             if success then
-                print(string.format("[AUTO %s] Action cycle #%d successful", 
-                    isMob and "ATTACK" or "MINE", actionCount))
+                print(string.format("[TWEEEN] Action #%d successful", actionCount))
             else
-                print("[AUTO " .. (isMob and "ATTACK" or "MINE") .. "] Remote call failed")
+                print("[TWEEEN] Remote call failed")
             end
             
+            -- Update noclip selama aksi
+            enableNoclip()
             task.wait(actionDelay)
         end
         
-        print(string.format("[AUTO %s] Finished %s %s - %d cycles completed", 
-            isMob and "ATTACK" or "MINE", isMob and "attacking" or "mining", targetData.Type, actionCount))
+        print(string.format("[TWEEEN] Finished - %d cycles", actionCount))
     else
-        print("[AUTO " .. (isMob and "ATTACK" or "MINE") .. "] Tween failed to complete")
+        print("[TWEEEN] Tween failed or timed out")
     end
     
     if isMob then
@@ -1599,10 +1708,7 @@ local function tweenToTargetAndAttack(targetData, isMob)
 end
 
 local function attackPriorityMobs()
-    if IsAttacking then 
-        print("[AUTO ATTACK] Already attacking, skipping")
-        return 
-    end
+    if IsAttacking then return end
     
     local priorityMobs = findPriorityMobs()
     
@@ -1651,7 +1757,7 @@ local function startAutoAttackLoop()
             return
         end
         
-        if flags.AttackWhileMining and (AutoMineEnabled or IsMining) then
+        if flags.AttackWhileMining then
             local priorityMobs = findPriorityMobs()
             if #priorityMobs > 0 then
                 print("[AUTO ATTACK] Priority mobs detected, attacking first")
@@ -1663,6 +1769,7 @@ local function startAutoAttackLoop()
         local nearestMob = findNearestMob()
         
         if nearestMob then
+            -- CEK APAKAH INI PLAYER SEBELUM MENYERANG
             if isPlayerModel(nearestMob.Model) then
                 print("[AUTO ATTACK] Skipping player target: " .. nearestMob.Model.Name)
                 return
@@ -1702,6 +1809,7 @@ local function toggleAutoAttack()
         end
         IsAttacking = false
         CurrentAttackTarget = nil
+        disableNoclip()
     end
     
     return flags.AutoAttackEnabled
@@ -1710,25 +1818,21 @@ end
 local function setAttackCooldown(seconds)
     ATTACK_COOLDOWN = math.max(0.5, seconds)
     print("[AUTO ATTACK] Attack cooldown set to: " .. ATTACK_COOLDOWN .. " seconds")
-    return ATTACK_COOLDOWN
 end
 
 local function setAttackSpeed(speed)
     ATTACK_SPEED = math.max(10, math.min(500, speed))
     print("[AUTO ATTACK] Attack speed set to: " .. ATTACK_SPEED .. " studs/sec")
-    return ATTACK_SPEED
 end
 
 local function setAttackSearchRadius(radius)
     ATTACK_SEARCH_RADIUS = math.max(10, math.min(1000, radius))
     print("[AUTO ATTACK] Attack search radius set to: " .. ATTACK_SEARCH_RADIUS .. " studs")
-    return ATTACK_SEARCH_RADIUS
 end
 
 local function setAttackDelay(delay)
     ATTACK_DELAY = math.max(0.1, math.min(2, delay))
     print("[AUTO ATTACK] Attack delay set to: " .. ATTACK_DELAY .. " seconds")
-    return ATTACK_DELAY
 end
 
 local function forceAttackNearest()
@@ -1740,6 +1844,7 @@ local function forceAttackNearest()
     local nearestMob = findNearestMob()
     
     if nearestMob then
+        -- CEK APAKAH INI PLAYER
         if isPlayerModel(nearestMob.Model) then
             print("[AUTO ATTACK] Cannot attack player: " .. nearestMob.Model.Name)
             return false
@@ -1764,6 +1869,7 @@ end
 ----------------------------------------------------------------
 -- ==================== AUTO MINE SYSTEM =====================
 ----------------------------------------------------------------
+
 local function getRocksData()
     local rocks = {}
     local character = LocalPlayer.Character
@@ -1897,6 +2003,10 @@ local function toggleAutoMine()
     
     if AutoMineEnabled then
         print("[AUTO MINE] Auto mining system ENABLED")
+        -- Enable noclip saat mulai mining
+        if NOCLIP_ENABLED then
+            enableNoclip()
+        end
         startAutoMineLoop()
     else
         print("[AUTO MINE] Auto mining system DISABLED")
@@ -1906,40 +2016,19 @@ local function toggleAutoMine()
         end
         IsMining = false
         CurrentMineTarget = nil
+        -- Disable noclip saat berhenti mining
         disableNoclip()
     end
     
     return AutoMineEnabled
 end
 
-local function setMiningCooldown(seconds)
-    MINING_COOLDOWN = math.max(0.5, seconds)
-    print("[AUTO MINE] Mining cooldown set to: " .. MINING_COOLDOWN .. " seconds")
-    return MINING_COOLDOWN
-end
-
-local function setMiningSpeed(speed)
-    MINING_SPEED = math.max(10, math.min(500, speed))
-    print("[AUTO MINE] Mining speed set to: " .. MINING_SPEED .. " studs/sec")
-    return MINING_SPEED
-end
-
-local function setSearchRadius(radius)
-    MINING_SEARCH_RADIUS = math.max(10, math.min(5000, radius))
-    print("[AUTO MINE] Search radius set to: " .. MINING_SEARCH_RADIUS .. " studs")
-    return MINING_SEARCH_RADIUS
-end
-
-local function setFlyHeight(height)
-    FLY_HEIGHT = math.max(0, math.min(100, height))
-    print("[AUTO MINE] Fly height set to: " .. FLY_HEIGHT .. " studs")
-    return FLY_HEIGHT
-end
-
 local function toggleNoclip()
     NOCLIP_ENABLED = not NOCLIP_ENABLED
     
-    if not NOCLIP_ENABLED then
+    if NOCLIP_ENABLED then
+        enableNoclip()
+    else
         disableNoclip()
     end
     
@@ -1947,10 +2036,29 @@ local function toggleNoclip()
     return NOCLIP_ENABLED
 end
 
+local function setMiningCooldown(seconds)
+    MINING_COOLDOWN = math.max(0.5, seconds)
+    print("[AUTO MINE] Mining cooldown set to: " .. MINING_COOLDOWN .. " seconds")
+end
+
+local function setMiningSpeed(speed)
+    MINING_SPEED = math.max(10, math.min(500, speed))
+    print("[AUTO MINE] Mining speed set to: " .. MINING_SPEED .. " studs/sec")
+end
+
+local function setSearchRadius(radius)
+    MINING_SEARCH_RADIUS = math.max(10, math.min(5000, radius))
+    print("[AUTO MINE] Search radius set to: " .. MINING_SEARCH_RADIUS .. " studs")
+end
+
+local function setFlyHeight(height)
+    FLY_HEIGHT = math.max(0, math.min(100, height))
+    print("[AUTO MINE] Fly height set to: " .. FLY_HEIGHT .. " studs")
+end
+
 local function setMineDelay(delay)
     MINE_DELAY = math.max(0.1, math.min(2, delay))
     print("[AUTO MINE] Mining delay set to: " .. MINE_DELAY .. " seconds")
-    return MINE_DELAY
 end
 
 local function forceMineNearest()
@@ -1981,6 +2089,7 @@ end
 ----------------------------------------------------------------
 -- ====================== WINDUI GUI ========================
 ----------------------------------------------------------------
+
 local function toggleGUI()
     if not MainWindow then 
         print("[GUI] MainWindow not created yet")
@@ -2006,491 +2115,101 @@ end
 
 local function createMainWindow()
     if not loadUILibrary() then
-        print("[GUI] WindUI failed to load, using fallback GUI")
-        local ScreenGui = Instance.new("ScreenGui")
-        ScreenGui.Name = "JawirScriptFallbackGUI"
-        ScreenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
-        
-        local MainFrame = Instance.new("Frame")
-        MainFrame.Size = UDim2.new(0, 500, 0, 600)
-        MainFrame.Position = UDim2.new(0.5, -250, 0.5, -300)
-        MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-        MainFrame.BorderSizePixel = 0
-        MainFrame.Active = true
-        MainFrame.Draggable = true
-        MainFrame.Visible = guiVisible
-        MainFrame.Parent = ScreenGui
-        
-        local Title = Instance.new("TextLabel")
-        Title.Size = UDim2.new(1, 0, 0, 40)
-        Title.Position = UDim2.new(0, 0, 0, 0)
-        Title.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
-        Title.Text = "JawirScript - Fallback GUI"
-        Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-        Title.Font = Enum.Font.SourceSansBold
-        Title.TextSize = 18
-        Title.Parent = MainFrame
-        
-        local CloseButton = Instance.new("TextButton")
-        CloseButton.Size = UDim2.new(0, 30, 0, 30)
-        CloseButton.Position = UDim2.new(1, -35, 0, 5)
-        CloseButton.Text = "X"
-        CloseButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
-        CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        CloseButton.Font = Enum.Font.SourceSansBold
-        CloseButton.TextSize = 18
-        CloseButton.Parent = MainFrame
-        CloseButton.MouseButton1Click:Connect(function()
-            MainFrame.Visible = not MainFrame.Visible
-            guiVisible = MainFrame.Visible
-        end)
-        
-        local TabFrame = Instance.new("Frame")
-        TabFrame.Size = UDim2.new(1, -10, 1, -50)
-        TabFrame.Position = UDim2.new(0, 5, 0, 45)
-        TabFrame.BackgroundTransparency = 1
-        TabFrame.Parent = MainFrame
-        
-        local Tabs = Instance.new("Frame")
-        Tabs.Size = UDim2.new(0, 150, 1, 0)
-        Tabs.BackgroundTransparency = 1
-        Tabs.Parent = TabFrame
-        
-        local Content = Instance.new("ScrollingFrame")
-        Content.Size = UDim2.new(1, -160, 1, 0)
-        Content.Position = UDim2.new(0, 160, 0, 0)
-        Content.BackgroundTransparency = 1
-        Content.CanvasSize = UDim2.new(0, 0, 0, 1500)
-        Content.ScrollBarThickness = 5
-        Content.Parent = TabFrame
-        
-        local UIListLayout = Instance.new("UIListLayout")
-        UIListLayout.Padding = UDim.new(0, 5)
-        UIListLayout.Parent = Content
-        
-        local tabButtons = {}
-        local currentTab = nil
-        
-        local function showTab(tabName)
-            if currentTab then
-                currentTab.Visible = false
-            end
-            currentTab = Content
-            Content.Visible = true
+        print("[GUI] Failed to load WindUI Library")
+        -- Buat GUI sederhana sebagai fallback
+        local function createFallbackGUI()
+            local ScreenGui = Instance.new("ScreenGui")
+            ScreenGui.Name = "JawirScriptGUI"
+            ScreenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
             
-            for _, button in pairs(tabButtons) do
-                button.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
-            end
-            if tabButtons[tabName] then
-                tabButtons[tabName].BackgroundColor3 = Color3.fromRGB(80, 80, 90)
-            end
-        end
-        
-        local function createTab(name, callback)
-            local tabButton = Instance.new("TextButton")
-            tabButton.Size = UDim2.new(1, -10, 0, 40)
-            tabButton.Position = UDim2.new(0, 5, 0, #tabButtons * 45)
-            tabButton.Text = name
-            tabButton.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
-            tabButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            tabButton.Font = Enum.Font.SourceSans
-            tabButton.TextSize = 16
-            tabButton.Parent = Tabs
-            tabButtons[name] = tabButton
+            local Frame = Instance.new("Frame")
+            Frame.Size = UDim2.new(0, 300, 0, 400)
+            Frame.Position = UDim2.new(0.5, -150, 0.5, -200)
+            Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+            Frame.BorderSizePixel = 0
+            Frame.Active = true
+            Frame.Draggable = true
+            Frame.Parent = ScreenGui
             
-            tabButton.MouseButton1Click:Connect(function()
-                showTab(name)
-                Content:ClearAllChildren()
-                Content.CanvasSize = UDim2.new(0, 0, 0, 0)
-                UIListLayout.Parent = Content
-                callback()
+            local Title = Instance.new("TextLabel")
+            Title.Size = UDim2.new(1, 0, 0, 40)
+            Title.Position = UDim2.new(0, 0, 0, 0)
+            Title.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+            Title.Text = "JawirScript - Fallback GUI"
+            Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+            Title.Font = Enum.Font.SourceSansBold
+            Title.TextSize = 18
+            Title.Parent = Frame
+            
+            local CloseButton = Instance.new("TextButton")
+            CloseButton.Size = UDim2.new(0, 30, 0, 30)
+            CloseButton.Position = UDim2.new(1, -35, 0, 5)
+            CloseButton.Text = "X"
+            CloseButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+            CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            CloseButton.Font = Enum.Font.SourceSansBold
+            CloseButton.TextSize = 18
+            CloseButton.Parent = Frame
+            CloseButton.MouseButton1Click:Connect(function()
+                ScreenGui:Destroy()
             end)
             
-            if #tabButtons == 1 then
-                tabButton.BackgroundColor3 = Color3.fromRGB(80, 80, 90)
-                showTab(name)
-                callback()
-            end
-        end
-        
-        local function createButton(text, func)
-            local button = Instance.new("TextButton")
-            button.Size = UDim2.new(1, -10, 0, 40)
-            button.Text = text
-            button.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
-            button.TextColor3 = Color3.fromRGB(255, 255, 255)
-            button.Font = Enum.Font.SourceSans
-            button.TextSize = 16
-            button.Parent = Content
-            button.MouseButton1Click:Connect(func)
-        end
-        
-        local function createToggle(text, getFunc, setFunc)
-            local frame = Instance.new("Frame")
-            frame.Size = UDim2.new(1, -10, 0, 40)
-            frame.BackgroundTransparency = 1
-            frame.Parent = Content
+            local ScrollFrame = Instance.new("ScrollingFrame")
+            ScrollFrame.Size = UDim2.new(1, -10, 1, -50)
+            ScrollFrame.Position = UDim2.new(0, 5, 0, 45)
+            ScrollFrame.BackgroundTransparency = 1
+            ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 800)
+            ScrollFrame.ScrollBarThickness = 5
+            ScrollFrame.Parent = Frame
             
-            local label = Instance.new("TextLabel")
-            label.Size = UDim2.new(0.7, 0, 1, 0)
-            label.Text = text
-            label.TextColor3 = Color3.fromRGB(255, 255, 255)
-            label.Font = Enum.Font.SourceSans
-            label.TextSize = 16
-            label.BackgroundTransparency = 1
-            label.TextXAlignment = Enum.TextXAlignment.Left
-            label.Parent = frame
+            local UIListLayout = Instance.new("UIListLayout")
+            UIListLayout.Padding = UDim.new(0, 5)
+            UIListLayout.Parent = ScrollFrame
             
-            local toggle = Instance.new("TextButton")
-            toggle.Size = UDim2.new(0.25, 0, 0.7, 0)
-            toggle.Position = UDim2.new(0.73, 0, 0.15, 0)
-            toggle.Text = getFunc() and "ON" or "OFF"
-            toggle.BackgroundColor3 = getFunc() and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
-            toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-            toggle.Font = Enum.Font.SourceSansBold
-            toggle.TextSize = 14
-            toggle.Parent = frame
-            
-            toggle.MouseButton1Click:Connect(function()
-                local newValue = setFunc(not getFunc())
-                toggle.Text = newValue and "ON" or "OFF"
-                toggle.BackgroundColor3 = newValue and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
-            end)
-        end
-        
-        local function createSlider(text, min, max, current, func)
-            local frame = Instance.new("Frame")
-            frame.Size = UDim2.new(1, -10, 0, 60)
-            frame.BackgroundTransparency = 1
-            frame.Parent = Content
-            
-            local label = Instance.new("TextLabel")
-            label.Size = UDim2.new(1, 0, 0.5, 0)
-            label.Text = text .. ": " .. current
-            label.TextColor3 = Color3.fromRGB(255, 255, 255)
-            label.Font = Enum.Font.SourceSans
-            label.TextSize = 16
-            label.BackgroundTransparency = 1
-            label.TextXAlignment = Enum.TextXAlignment.Left
-            label.Parent = frame
-            
-            local slider = Instance.new("Frame")
-            slider.Size = UDim2.new(1, 0, 0.3, 0)
-            slider.Position = UDim2.new(0, 0, 0.5, 0)
-            slider.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
-            slider.BorderSizePixel = 1
-            slider.BorderColor3 = Color3.fromRGB(30, 30, 30)
-            slider.Parent = frame
-            
-            local fill = Instance.new("Frame")
-            fill.Size = UDim2.new((current - min) / (max - min), 0, 1, 0)
-            fill.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
-            fill.BorderSizePixel = 0
-            fill.Parent = slider
-            
-            local dragging = false
-            slider.InputBegan:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                    dragging = true
-                end
-            end)
-            
-            slider.InputEnded:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                    dragging = false
-                end
-            end)
-            
-            game:GetService("UserInputService").InputChanged:Connect(function(input)
-                if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-                    local mouse = game:GetService("Players").LocalPlayer:GetMouse()
-                    local relativeX = math.clamp(mouse.X - slider.AbsolutePosition.X, 0, slider.AbsoluteSize.X)
-                    local percentage = relativeX / slider.AbsoluteSize.X
-                    local value = math.floor(min + (max - min) * percentage + 0.5)
-                    
-                    fill.Size = UDim2.new(percentage, 0, 1, 0)
-                    label.Text = text .. ": " .. value
-                    func(value)
-                end
-            end)
-        end
-        
-        local function createDropdown(text, options, current, func)
-            local frame = Instance.new("Frame")
-            frame.Size = UDim2.new(1, -10, 0, 60)
-            frame.BackgroundTransparency = 1
-            frame.Parent = Content
-            
-            local label = Instance.new("TextLabel")
-            label.Size = UDim2.new(1, 0, 0.5, 0)
-            label.Text = text
-            label.TextColor3 = Color3.fromRGB(255, 255, 255)
-            label.Font = Enum.Font.SourceSans
-            label.TextSize = 16
-            label.BackgroundTransparency = 1
-            label.TextXAlignment = Enum.TextXAlignment.Left
-            label.Parent = frame
-            
-            local dropdown = Instance.new("TextButton")
-            dropdown.Size = UDim2.new(1, 0, 0.5, 0)
-            dropdown.Position = UDim2.new(0, 0, 0.5, 0)
-            dropdown.Text = current
-            dropdown.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
-            dropdown.TextColor3 = Color3.fromRGB(255, 255, 255)
-            dropdown.Font = Enum.Font.SourceSans
-            dropdown.TextSize = 14
-            dropdown.Parent = frame
-            
-            local open = false
-            local dropdownFrame = Instance.new("Frame")
-            dropdownFrame.Size = UDim2.new(1, 0, 0, 200)
-            dropdownFrame.Position = UDim2.new(0, 0, 1, 0)
-            dropdownFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
-            dropdownFrame.BorderSizePixel = 1
-            dropdownFrame.BorderColor3 = Color3.fromRGB(30, 30, 35)
-            dropdownFrame.Visible = false
-            dropdownFrame.Parent = dropdown
-            
-            local dropdownList = Instance.new("ScrollingFrame")
-            dropdownList.Size = UDim2.new(1, 0, 1, 0)
-            dropdownList.BackgroundTransparency = 1
-            dropdownList.CanvasSize = UDim2.new(0, 0, 0, #options * 30)
-            dropdownList.ScrollBarThickness = 5
-            dropdownList.Parent = dropdownFrame
-            
-            local listLayout = Instance.new("UIListLayout")
-            listLayout.Padding = UDim.new(0, 2)
-            listLayout.Parent = dropdownList
-            
-            for _, option in ipairs(options) do
-                local optionButton = Instance.new("TextButton")
-                optionButton.Size = UDim2.new(1, -10, 0, 28)
-                optionButton.Text = option
-                optionButton.BackgroundColor3 = Color3.fromRGB(70, 70, 75)
-                optionButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                optionButton.Font = Enum.Font.SourceSans
-                optionButton.TextSize = 14
-                optionButton.Parent = dropdownList
-                
-                optionButton.MouseButton1Click:Connect(function()
-                    dropdown.Text = option
-                    func(option)
-                    dropdownFrame.Visible = false
-                    open = false
-                end)
-            end
-            
-            dropdown.MouseButton1Click:Connect(function()
-                open = not open
-                dropdownFrame.Visible = open
-            end)
-        end
-        
-        -- Create tabs dengan semua setting
-        createTab("⚒️ Forge", function()
-            createButton("🔧 Activate Hooks", hookMinigameModules)
-            createToggle("🔨 Auto Hammer", function() return flags.AutoHammerEnabled end, 
-                function(val) flags.AutoHammerEnabled = val return val end)
-            createToggle("🔥 Skip Melt", function() return flags.SkipMeltEnabled end,
-                function(val) flags.SkipMeltEnabled = val return val end)
-            createToggle("💧 Skip Pour", function() return flags.SkipPourEnabled end,
-                function(val) flags.SkipPourEnabled = val return val end)
-            createToggle("🐛 Debug Mode", function() return flags.DebugMode end,
-                function(val) flags.DebugMode = val return val end)
-            createSlider("Hammer Cooldown", 0.1, 2.0, HAMMER_COOLDOWN, 
-                function(val) HAMMER_COOLDOWN = val end)
-        end)
-        
-        createTab("⛏️ Mining", function()
-            createToggle("⛏️ Enable Auto Mine", function() return AutoMineEnabled end,
-                function() return toggleAutoMine() end)
-            createToggle("👻 Enable Noclip", function() return NOCLIP_ENABLED end,
-                function() return toggleNoclip() end)
-            createButton("🎯 Mine Nearest Rock", forceMineNearest)
-            createDropdown("Select Rock Type", getAllRockTypes(), SelectedRockType, setRockType)
-            createSlider("Mining Speed", 10, 500, MINING_SPEED, setMiningSpeed)
-            createSlider("Search Radius", 10, 5000, MINING_SEARCH_RADIUS, setSearchRadius)
-            createSlider("Fly Height", 0, 100, FLY_HEIGHT, setFlyHeight)
-            createSlider("Mining Cooldown", 0.1, 5, MINING_COOLDOWN, setMiningCooldown)
-            createSlider("Mining Delay", 0.1, 2, MINE_DELAY, setMineDelay)
-            createButton("📊 Show Rock Counts", function()
-                local counts = getRocksCountByType()
-                print("=== Rock Counts ===")
-                for name, count in pairs(counts) do
-                    print(name .. ": " .. count)
-                end
-            end)
-        end)
-        
-        createTab("⚔️ Attack", function()
-            createToggle("⚔️ Enable Auto Attack", function() return flags.AutoAttackEnabled end,
-                function() return toggleAutoAttack() end)
-            createToggle("⚔️ Attack While Mining", function() return flags.AttackWhileMining end,
-                function(val) flags.AttackWhileMining = val return val end)
-            createButton("🎯 Attack Nearest Mob", forceAttackNearest)
-            createDropdown("Select Mob Type", getAllMobTypes(), SelectedMobType, setMobType)
-            createSlider("Attack Speed", 10, 500, ATTACK_SPEED, setAttackSpeed)
-            createSlider("Attack Radius", 10, 1000, ATTACK_SEARCH_RADIUS, setAttackSearchRadius)
-            createSlider("Attack Cooldown", 0.1, 5, ATTACK_COOLDOWN, setAttackCooldown)
-            createSlider("Attack Delay", 0.1, 2, ATTACK_DELAY, setAttackDelay)
-            createButton("📊 Show Mob Counts", function()
-                local counts = getMobsCountByType()
-                print("=== Mob Counts ===")
-                for name, count in pairs(counts) do
-                    print(name .. ": " .. count)
-                end
-            end)
-            createButton("🎯 Attack Priority Mobs", function()
-                if not IsAttacking then
-                    attackPriorityMobs()
-                end
-            end)
-        end)
-        
-        createTab("🗿 ESP", function()
-            createToggle("👁️ Rock ESP", function() return ESPEnabled end,
-                function() return toggleRockESP() end)
-            createToggle("👹 Mob ESP", function() return MobESPEnabled end,
-                function() return toggleMobESP() end)
-            createSlider("Rock ESP Distance", 10, 2000, ESPDistance, setESPDistance)
-            createSlider("Mob ESP Distance", 10, 1000, MobESPDistance, setMobESPDistance)
-            createButton("🧹 Clear All ESP", cleanupESP)
-            createToggle("❤️ Show Health Bars", function() 
-                for _, config in pairs(MobConfigs) do
-                    if config.HealthBar then return true end
-                end
-                return false
-            end, function(val)
-                for _, config in pairs(MobConfigs) do
-                    config.HealthBar = val
-                end
-                cleanupESP()
-                return val
-            end)
-            createButton("🔄 Refresh ESP", function()
-                cleanupESP()
-                task.wait(0.5)
-                scanForRocks()
-                scanForMobs()
-            end)
-        end)
-        
-        createTab("⚙️ Settings", function()
-            createButton("🔧 Reinitialize System", function()
-                print("[SYSTEM] Reinitializing...")
-                pcall(initializeRemotes)
-                pcall(hookMinigameModules)
-            end)
-            createButton("🔄 Restart ESP Scanner", function()
-                if ESPConnection then
-                    task.cancel(ESPConnection)
-                end
-                ESPConnection = task.spawn(autoESPUpdate)
-            end)
-            createDropdown("Toggle Keybind", 
-                {"RightControl", "LeftControl", "RightShift", "LeftShift", "F1", "F2", "F3", "F4"}, 
-                toggleKeybind, function(val) toggleKeybind = val end)
-            createToggle("Auto Initialize", function() return flags.AutoInitialize end,
-                function(val) flags.AutoInitialize = val return val end)
-            createButton("📜 View Logs", function()
-                print("=== System Status ===")
-                print("Auto Mine: " .. tostring(AutoMineEnabled))
-                print("Auto Attack: " .. tostring(flags.AutoAttackEnabled))
-                print("Rock ESP: " .. tostring(ESPEnabled))
-                print("Mob ESP: " .. tostring(MobESPEnabled))
-                print("Noclip: " .. tostring(NOCLIP_ENABLED))
-                print("Forge Hooks Active: " .. tostring(isHammerMinigameActive))
-                print("Rocks Found: " .. tostring(getRocksCountByType().Total))
-                print("Mobs Found: " .. tostring(getMobsCountByType().Total))
-            end)
-            createButton("💾 Save Settings", function()
-                print("[SETTINGS] Save feature coming soon!")
-            end)
-            createButton("📥 Load Settings", function()
-                print("[SETTINGS] Load feature coming soon!")
-            end)
-        end)
-        
-        createTab("📋 Info", function()
-            local infoFrame = Instance.new("Frame")
-            infoFrame.Size = UDim2.new(1, -10, 0, 400)
-            infoFrame.BackgroundTransparency = 1
-            infoFrame.Parent = Content
-            
-            local title = Instance.new("TextLabel")
-            title.Size = UDim2.new(1, 0, 0, 40)
-            title.Text = "JawirScript v2.0"
-            title.TextColor3 = Color3.fromRGB(255, 255, 255)
-            title.Font = Enum.Font.SourceSansBold
-            title.TextSize = 24
-            title.BackgroundTransparency = 1
-            title.Parent = infoFrame
-            
-            local desc = Instance.new("TextLabel")
-            desc.Size = UDim2.new(1, 0, 0, 150)
-            desc.Position = UDim2.new(0, 0, 0, 50)
-            desc.Text = "Features:\n✅ Auto Forge Skipper\n✅ Auto Mining System\n✅ Auto Attack System\n✅ Rock & Mob ESP\n✅ NoClip & Flight\n✅ Priority Target System\n✅ GUI with Full Settings"
-            desc.TextColor3 = Color3.fromRGB(200, 200, 200)
-            desc.Font = Enum.Font.SourceSans
-            desc.TextSize = 16
-            desc.TextYAlignment = Enum.TextYAlignment.Top
-            desc.BackgroundTransparency = 1
-            desc.Parent = infoFrame
-            
-            local warning = Instance.new("TextLabel")
-            warning.Size = UDim2.new(1, 0, 0, 100)
-            warning.Position = UDim2.new(0, 0, 0, 210)
-            warning.Text = "⚠️ Note: This script only detects MOBS, not PLAYERS.\nAll attacks are directed only at game mobs."
-            warning.TextColor3 = Color3.fromRGB(255, 255, 0)
-            warning.Font = Enum.Font.SourceSansBold
-            warning.TextSize = 14
-            warning.TextYAlignment = Enum.TextYAlignment.Top
-            warning.BackgroundTransparency = 1
-            warning.Parent = infoFrame
-            
-            local controls = Instance.new("TextLabel")
-            controls.Size = UDim2.new(1, 0, 0, 80)
-            controls.Position = UDim2.new(0, 0, 0, 320)
-            controls.Text = "Controls:\n" .. toggleKeybind .. " - Toggle GUI\nGUI contains all settings"
-            controls.TextColor3 = Color3.fromRGB(150, 200, 255)
-            controls.Font = Enum.Font.SourceSans
-            controls.TextSize = 14
-            controls.TextYAlignment = Enum.TextYAlignment.Top
-            controls.BackgroundTransparency = 1
-            controls.Parent = infoFrame
-        end)
-        
-        print("[GUI] Fallback GUI created with all settings")
-        
-        return {
-            Open = function() 
-                MainFrame.Visible = true 
-                guiVisible = true
-            end,
-            Close = function() 
-                MainFrame.Visible = false 
-                guiVisible = false
-            end,
-            OpenButtonMain = {
-                Visible = function(visible)
-                end
+            -- Tambahkan beberapa tombol
+            local buttons = {
+                {"Toggle Auto Mine", toggleAutoMine},
+                {"Toggle Auto Attack", toggleAutoAttack},
+                {"Toggle Rock ESP", toggleRockESP},
+                {"Toggle Mob ESP", toggleMobESP},
+                {"Force Mine Nearest", forceMineNearest},
+                {"Force Attack Nearest", forceAttackNearest}
             }
-        }
+            
+            for i, buttonData in ipairs(buttons) do
+                local button = Instance.new("TextButton")
+                button.Size = UDim2.new(1, -10, 0, 40)
+                button.Position = UDim2.new(0, 5, 0, (i-1)*45)
+                button.Text = buttonData[1]
+                button.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+                button.TextColor3 = Color3.fromRGB(255, 255, 255)
+                button.Font = Enum.Font.SourceSans
+                button.TextSize = 16
+                button.Parent = ScrollFrame
+                button.MouseButton1Click:Connect(buttonData[2])
+            end
+            
+            print("[GUI] Fallback GUI created")
+            return {Open = function() Frame.Visible = true end, Close = function() Frame.Visible = false end}
+        end
+        
+        MainWindow = createFallbackGUI()
+        return MainWindow
     end
     
-    print("[GUI] Creating WindUI Window with all settings...")
+    print("[GUI] Creating WindUI Window...")
     
     local success, window = pcall(function()
         return WindUI:CreateWindow({
-            Title = "JawirScript - Complete System",
-            Folder = "JawirScriptCompleteSystem",
+            Title = "JawirScript - The Forge",
+            Folder = "JawirScriptForgeSystem",
             Theme = "Dark",
-            Size = UDim2.new(0, 700, 0, 750),
+            Size = UDim2.new(0, 600, 0, 750),
             Radius = 12,
             Resizable = true,
             Acrylic = true,
             Background = Color3.fromRGB(30, 30, 35),
-            Author = "Auto Forge + Auto Mine + Auto Attack + ESP",
+            Author = "Auto Forge + Auto Mine + Auto Attack System",
             ToggleKey = Enum.KeyCode.RightControl,
             OpenButton = {
                 Title = "Jawir Script",
@@ -2513,71 +2232,144 @@ local function createMainWindow()
     end
     
     MainWindow = window
+    print("[GUI] WindUI Window created successfully")
+    
+    MainWindow:OnOpen(function()
+        print("[GUI] Window opened")
+        if MainWindow.OpenButtonMain then
+            MainWindow.OpenButtonMain:Visible(false)
+        end
+        guiVisible = true
+    end)
+    
+    MainWindow:OnClose(function()
+        print("[GUI] Window closed")
+        if MainWindow.OpenButtonMain then
+            MainWindow.OpenButtonMain:Visible(true)
+        end
+        guiVisible = false
+    end)
     
     -- Tab 1: Forge System
     local ForgeTab = MainWindow:Tab({
         Title = "⚒️ Forge",
-        Desc = "Auto Forge Skipper Settings"
+        Desc = "Auto Forge Skipper"
+    })
+    
+    ForgeTab:Paragraph({
+        Title = "🔧 Auto Forge System",
+        Desc = "Automatically skip melt, pour, and hammer minigames"
     })
     
     ForgeTab:Button({
         Title = "🔧 Activate Hooks",
-        Desc = "Activate minigame hooks immediately",
-        Callback = hookMinigameModules
+        Desc = "Activate minigame hooks",
+        Callback = function()
+            local success = hookMinigameModules()
+            if success then
+                task.wait(0.5)
+                WindUI:Notify({
+                    Title = "Hooks Activated",
+                    Content = "Auto forge system activated successfully!",
+                    Icon = "check-circle",
+                    Duration = 3
+                })
+            else
+                WindUI:Notify({
+                    Title = "Hooks Failed",
+                    Content = "Failed to activate hooks",
+                    Icon = "x-circle",
+                    Duration = 3
+                })
+            end
+        end
     })
+    
+    ForgeTab:Divider()
     
     ForgeTab:Toggle({
         Title = "🔨 Auto Hammer",
         Desc = "Auto hammer during minigame",
-        Value = flags.AutoHammerEnabled,
+        Value = true,
         Callback = function(value)
             flags.AutoHammerEnabled = value
+            WindUI:Notify({
+                Title = "Auto Hammer",
+                Content = value and "ENABLED" or "DISABLED",
+                Icon = value and "hammer" or "hammer-off",
+                Duration = 2
+            })
         end
     })
     
     ForgeTab:Toggle({
         Title = "🔥 Skip Melt",
         Desc = "Skip melt minigame",
-        Value = flags.SkipMeltEnabled,
+        Value = true,
         Callback = function(value)
             flags.SkipMeltEnabled = value
+            WindUI:Notify({
+                Title = "Skip Melt",
+                Content = value and "ENABLED" or "DISABLED",
+                Icon = value and "fire" or "fire-off",
+                Duration = 2
+            })
         end
     })
     
     ForgeTab:Toggle({
         Title = "💧 Skip Pour",
         Desc = "Skip pour minigame",
-        Value = flags.SkipPourEnabled,
+        Value = true,
         Callback = function(value)
             flags.SkipPourEnabled = value
+            WindUI:Notify({
+                Title = "Skip Pour",
+                Content = value and "ENABLED" or "DISABLED",
+                Icon = value and "droplet" or "droplet-off",
+                Duration = 2
+            })
         end
     })
     
     ForgeTab:Slider({
-        Title = "Hammer Cooldown",
+        Title = "⏱️ Hammer Speed",
         Desc = "Delay between hammer hits",
-        Value = HAMMER_COOLDOWN,
-        Min = 0.1,
-        Max = 2.0,
+        Value = {Default = HAMMER_COOLDOWN, Min = 0.1, Max = 1.0, Step = 0.1},
         Callback = function(value)
             HAMMER_COOLDOWN = value
+            WindUI:Notify({
+                Title = "Hammer Speed",
+                Content = "Set to: " .. string.format("%.1f", value) .. "s",
+                Icon = "gauge",
+                Duration = 2
+            })
         end
     })
     
-    ForgeTab:Toggle({
-        Title = "🐛 Debug Mode",
-        Desc = "Enable debug logging",
-        Value = flags.DebugMode,
-        Callback = function(value)
-            flags.DebugMode = value
-            debugMode = value
+    ForgeTab:Button({
+        Title = "🛑 Stop Hammer",
+        Desc = "Stop auto hammer immediately",
+        Callback = function()
+            stopAutoHammer()
+            WindUI:Notify({
+                Title = "Hammer Stopped",
+                Content = "Auto hammer stopped",
+                Icon = "stop-circle",
+                Duration = 1.5
+            })
         end
     })
     
-    -- Tab 2: Auto Mine
+    -- Tab 2: Auto Mine System
     local MineTab = MainWindow:Tab({
-        Title = "⛏️ Mining",
-        Desc = "Auto Mine System Settings"
+        Title = "⛏️ Auto Mine",
+        Desc = "Auto Mine System - Mines rocks with Weapon & Pickaxe"
+    })
+    
+    MineTab:Paragraph({
+        Title = "⛏️ Auto Mine System",
+        Desc = "Automatically mine rocks - Tween to rock and call Weapon & Pickaxe remotes"
     })
     
     MineTab:Toggle({
@@ -2586,7 +2378,18 @@ local function createMainWindow()
         Value = AutoMineEnabled,
         Callback = function(value)
             AutoMineEnabled = toggleAutoMine()
+            WindUI:Notify({
+                Title = "Auto Mine",
+                Content = AutoMineEnabled and "ENABLED - Mining with Weapon & Pickaxe" or "DISABLED",
+                Icon = AutoMineEnabled and "mining" or "mining-off",
+                Duration = 3
+            })
         end
+    })
+    
+    MineTab:Paragraph({
+        Title = "🛠️ Mining Tools",
+        Desc = "System will call both Weapon and Pickaxe remotes simultaneously"
     })
     
     MineTab:Toggle({
@@ -2595,88 +2398,196 @@ local function createMainWindow()
         Value = NOCLIP_ENABLED,
         Callback = function(value)
             NOCLIP_ENABLED = toggleNoclip()
+            WindUI:Notify({
+                Title = "Noclip",
+                Content = NOCLIP_ENABLED and "ENABLED" or "DISABLED",
+                Icon = NOCLIP_ENABLED and "ghost" or "ghost-off",
+                Duration = 2
+            })
         end
     })
+    
+    MineTab:Toggle({
+        Title = "⚔️ Attack While Mining",
+        Desc = "Auto attack priority mobs while mining",
+        Value = flags.AttackWhileMining,
+        Callback = function(value)
+            flags.AttackWhileMining = value
+            WindUI:Notify({
+                Title = "Attack While Mining",
+                Content = value and "ENABLED - Will attack Blight Pyromancer first" or "DISABLED",
+                Icon = value and "swords" or "swords-off",
+                Duration = 3
+            })
+        end
+    })
+    
+    -- Get all rock types for dropdown
+    local allRockTypes = getAllRockTypes()
+    table.insert(allRockTypes, 1, "Any")
+    
+    MineTab:Dropdown({
+        Title = "🎯 Target Rock Type",
+        Desc = "Select which rock type to mine",
+        Value = SelectedRockType,
+        Values = allRockTypes,
+        Callback = function(value)
+            setRockType(value)
+            WindUI:Notify({
+                Title = "Target Type",
+                Content = "Set to: " .. value,
+                Icon = "target",
+                Duration = 2
+            })
+        end
+    })
+    
+    MineTab:Slider({
+        Title = "⏱️ Mining Cooldown",
+        Desc = "Time between mining different rocks",
+        Value = {Default = MINING_COOLDOWN, Min = 0.5, Max = 30, Step = 0.5},
+        Callback = function(value)
+            setMiningCooldown(value)
+            WindUI:Notify({
+                Title = "Mining Cooldown",
+                Content = "Set to: " .. value .. " seconds",
+                Icon = "clock",
+                Duration = 2
+            })
+        end
+    })
+    
+    MineTab:Slider({
+        Title = "⚡ Tween Speed",
+        Desc = "Speed of movement between rocks",
+        Value = {Default = MINING_SPEED, Min = 10, Max = 500, Step = 10},
+        Callback = function(value)
+            setMiningSpeed(value)
+            WindUI:Notify({
+                Title = "Tween Speed",
+                Content = "Set to: " .. value .. " studs/sec",
+                Icon = "zap",
+                Duration = 2
+            })
+        end
+    })
+    
+    MineTab:Slider({
+        Title = "📏 Search Radius",
+        Desc = "Maximum distance to search for rocks",
+        Value = {Default = MINING_SEARCH_RADIUS, Min = 10, Max = 5000, Step = 50},
+        Callback = function(value)
+            setSearchRadius(value)
+            WindUI:Notify({
+                Title = "Search Radius",
+                Content = "Set to: " .. value .. " studs",
+                Icon = "ruler",
+                Duration = 2
+            })
+        end
+    })
+    
+    MineTab:Slider({
+        Title = "🔼 Fly Height",
+        Desc = "Height above rock to fly to",
+        Value = {Default = FLY_HEIGHT, Min = 0, Max = 100, Step = 1},
+        Callback = function(value)
+            setFlyHeight(value)
+            WindUI:Notify({
+                Title = "Fly Height",
+                Content = "Set to: " .. value .. " studs",
+                Icon = "arrow-up",
+                Duration = 2
+            })
+        end
+    })
+    
+    MineTab:Slider({
+        Title = "⏳ Mining Delay",
+        Desc = "Delay between mining remote calls",
+        Value = {Default = MINE_DELAY, Min = 0.1, Max = 2, Step = 0.1},
+        Callback = function(value)
+            setMineDelay(value)
+            WindUI:Notify({
+                Title = "Mining Delay",
+                Content = "Set to: " .. value .. " seconds",
+                Icon = "timer",
+                Duration = 2
+            })
+        end
+    })
+    
+    MineTab:Divider()
     
     MineTab:Button({
         Title = "🎯 Mine Nearest Rock",
         Desc = "Immediately mine nearest rock",
-        Callback = forceMineNearest
-    })
-    
-    local rockTypes = getAllRockTypes()
-    table.insert(rockTypes, 1, "Any")
-    MineTab:Dropdown({
-        Title = "Select Rock Type",
-        Desc = "Filter rocks by type",
-        Value = SelectedRockType,
-        Options = rockTypes,
-        Callback = function(value)
-            SelectedRockType = value
-        end
-    })
-    
-    MineTab:Slider({
-        Title = "Mining Speed",
-        Desc = "Movement speed while mining",
-        Value = MINING_SPEED,
-        Min = 10,
-        Max = 500,
-        Callback = setMiningSpeed
-    })
-    
-    MineTab:Slider({
-        Title = "Search Radius",
-        Desc = "Distance to search for rocks",
-        Value = MINING_SEARCH_RADIUS,
-        Min = 10,
-        Max = 5000,
-        Callback = setSearchRadius
-    })
-    
-    MineTab:Slider({
-        Title = "Fly Height",
-        Desc = "Height to fly while mining",
-        Value = FLY_HEIGHT,
-        Min = 0,
-        Max = 100,
-        Callback = setFlyHeight
-    })
-    
-    MineTab:Slider({
-        Title = "Mining Cooldown",
-        Desc = "Delay between mining cycles",
-        Value = MINING_COOLDOWN,
-        Min = 0.1,
-        Max = 5,
-        Callback = setMiningCooldown
-    })
-    
-    MineTab:Slider({
-        Title = "Mining Delay",
-        Desc = "Delay between mining hits",
-        Value = MINE_DELAY,
-        Min = 0.1,
-        Max = 2,
-        Callback = setMineDelay
-    })
-    
-    MineTab:Button({
-        Title = "📊 Show Rock Counts",
-        Desc = "Display counts of each rock type",
         Callback = function()
             local counts = getRocksCountByType()
-            print("=== Rock Counts ===")
-            for name, count in pairs(counts) do
-                print(name .. ": " .. count)
+            if counts.Total == 0 then
+                WindUI:Notify({
+                    Title = "No Rocks Found",
+                    Content = "ESP is auto-scanning, wait a few seconds",
+                    Icon = "x-circle",
+                    Duration = 2
+                })
+                return
+            end
+            
+            local nearestRock = findNearestRock()
+            if nearestRock then
+                WindUI:Notify({
+                    Title = "Mining " .. nearestRock.Type,
+                    Content = string.format("Distance: %.0f studs", nearestRock.Distance),
+                    Icon = "mining",
+                    Duration = 2
+                })
+                
+                local success = forceMineNearest()
+                if not success then
+                    WindUI:Notify({
+                        Title = "Mining Failed",
+                        Content = "Could not start mining",
+                        Icon = "x-circle",
+                        Duration = 2
+                    })
+                end
+            else
+                WindUI:Notify({
+                    Title = "No Rocks Found",
+                    Content = "No rocks of selected type found",
+                    Icon = "x-circle",
+                    Duration = 2
+                })
             end
         end
     })
     
-    -- Tab 3: Auto Attack
+    MineTab:Button({
+        Title = "🛑 Stop Mining",
+        Desc = "Stop current mining",
+        Callback = function()
+            IsMining = false
+            CurrentMineTarget = nil
+            disableNoclip()
+            WindUI:Notify({
+                Title = "Mining Stopped",
+                Content = "Current mining stopped",
+                Icon = "stop-circle",
+                Duration = 1.5
+            })
+        end
+    })
+    
+    -- Tab 3: Auto Attack System
     local AttackTab = MainWindow:Tab({
-        Title = "⚔️ Attack",
-        Desc = "Auto Attack System Settings"
+        Title = "⚔️ Auto Attack",
+        Desc = "Auto Attack System - Attack mobs automatically"
+    })
+    
+    AttackTab:Paragraph({
+        Title = "⚔️ Auto Attack System",
+        Desc = "Automatically attack mobs - Tween to mob and attack"
     })
     
     AttackTab:Toggle({
@@ -2685,91 +2596,214 @@ local function createMainWindow()
         Value = flags.AutoAttackEnabled,
         Callback = function(value)
             flags.AutoAttackEnabled = toggleAutoAttack()
+            WindUI:Notify({
+                Title = "Auto Attack",
+                Content = flags.AutoAttackEnabled and "ENABLED" or "DISABLED",
+                Icon = flags.AutoAttackEnabled and "swords" or "swords-off",
+                Duration = 2
+            })
         end
     })
     
     AttackTab:Toggle({
-        Title = "⚔️ Attack While Mining",
-        Desc = "Attack mobs while mining",
-        Value = flags.AttackWhileMining,
+        Title = "🔥 Priority: Blight Pyromancer",
+        Desc = "Always attack Blight Pyromancer first",
+        Value = true,
         Callback = function(value)
-            flags.AttackWhileMining = value
+            PriorityMobs["Blight Pyromancer"] = value
+            WindUI:Notify({
+                Title = "Priority Attack",
+                Content = value and "Blight Pyromancer will be attacked first" or "Blight Pyromancer priority removed",
+                Icon = value and "skull" or "skull-off",
+                Duration = 2
+            })
         end
     })
+    
+    -- Get all mob types for dropdown
+    local allMobTypes = getAllMobTypes()
+    table.insert(allMobTypes, 1, "Any")
+    
+    AttackTab:Dropdown({
+        Title = "🎯 Target Mob Type",
+        Desc = "Select which mob type to attack",
+        Value = SelectedMobType,
+        Values = allMobTypes,
+        Callback = function(value)
+            setMobType(value)
+            WindUI:Notify({
+                Title = "Target Mob",
+                Content = "Set to: " .. value,
+                Icon = "target",
+                Duration = 2
+            })
+        end
+    })
+    
+    AttackTab:Slider({
+        Title = "⏱️ Attack Cooldown",
+        Desc = "Time between attacking different mobs",
+        Value = {Default = ATTACK_COOLDOWN, Min = 0.5, Max = 30, Step = 0.5},
+        Callback = function(value)
+            setAttackCooldown(value)
+            WindUI:Notify({
+                Title = "Attack Cooldown",
+                Content = "Set to: " .. value .. " seconds",
+                Icon = "clock",
+                Duration = 2
+            })
+        end
+    })
+    
+    AttackTab:Slider({
+        Title = "⚡ Attack Speed",
+        Desc = "Speed of movement between mobs",
+        Value = {Default = ATTACK_SPEED, Min = 10, Max = 500, Step = 10},
+        Callback = function(value)
+            setAttackSpeed(value)
+            WindUI:Notify({
+                Title = "Attack Speed",
+                Content = "Set to: " .. value .. " studs/sec",
+                Icon = "zap",
+                Duration = 2
+            })
+        end
+    })
+    
+    AttackTab:Slider({
+        Title = "📏 Attack Radius",
+        Desc = "Maximum distance to search for mobs",
+        Value = {Default = ATTACK_SEARCH_RADIUS, Min = 10, Max = 1000, Step = 10},
+        Callback = function(value)
+            setAttackSearchRadius(value)
+            WindUI:Notify({
+                Title = "Attack Radius",
+                Content = "Set to: " .. value .. " studs",
+                Icon = "ruler",
+                Duration = 2
+            })
+        end
+    })
+    
+    AttackTab:Slider({
+        Title = "⏳ Attack Delay",
+        Desc = "Delay between attack remote calls",
+        Value = {Default = ATTACK_DELAY, Min = 0.1, Max = 2, Step = 0.1},
+        Callback = function(value)
+            setAttackDelay(value)
+            WindUI:Notify({
+                Title = "Attack Delay",
+                Content = "Set to: " .. value .. " seconds",
+                Icon = "timer",
+                Duration = 2
+            })
+        end
+    })
+    
+    AttackTab:Divider()
     
     AttackTab:Button({
         Title = "🎯 Attack Nearest Mob",
         Desc = "Immediately attack nearest mob",
-        Callback = forceAttackNearest
-    })
-    
-    AttackTab:Button({
-        Title = "🎯 Attack Priority Mobs",
-        Desc = "Attack priority mobs first",
-        Callback = function()
-            if not IsAttacking then
-                attackPriorityMobs()
-            end
-        end
-    })
-    
-    local mobTypes = getAllMobTypes()
-    table.insert(mobTypes, 1, "Any")
-    AttackTab:Dropdown({
-        Title = "Select Mob Type",
-        Desc = "Filter mobs by type",
-        Value = SelectedMobType,
-        Options = mobTypes,
-        Callback = function(value)
-            SelectedMobType = value
-        end
-    })
-    
-    AttackTab:Slider({
-        Title = "Attack Speed",
-        Desc = "Movement speed while attacking",
-        Value = ATTACK_SPEED,
-        Min = 10,
-        Max = 500,
-        Callback = setAttackSpeed
-    })
-    
-    AttackTab:Slider({
-        Title = "Attack Radius",
-        Desc = "Distance to search for mobs",
-        Value = ATTACK_SEARCH_RADIUS,
-        Min = 10,
-        Max = 1000,
-        Callback = setAttackSearchRadius
-    })
-    
-    AttackTab:Slider({
-        Title = "Attack Cooldown",
-        Desc = "Delay between attack cycles",
-        Value = ATTACK_COOLDOWN,
-        Min = 0.1,
-        Max = 5,
-        Callback = setAttackCooldown
-    })
-    
-    AttackTab:Slider({
-        Title = "Attack Delay",
-        Desc = "Delay between attack hits",
-        Value = ATTACK_DELAY,
-        Min = 0.1,
-        Max = 2,
-        Callback = setAttackDelay
-    })
-    
-    AttackTab:Button({
-        Title = "📊 Show Mob Counts",
-        Desc = "Display counts of each mob type",
         Callback = function()
             local counts = getMobsCountByType()
-            print("=== Mob Counts ===")
-            for name, count in pairs(counts) do
-                print(name .. ": " .. count)
+            if counts.Total == 0 then
+                WindUI:Notify({
+                    Title = "No Mobs Found",
+                    Content = "ESP is auto-scanning, wait a few seconds",
+                    Icon = "x-circle",
+                    Duration = 2
+                })
+                return
             end
+            
+            local nearestMob = findNearestMob()
+            if nearestMob then
+                WindUI:Notify({
+                    Title = "Attacking " .. nearestMob.Type,
+                    Content = string.format("Distance: %.0f studs", nearestMob.Distance),
+                    Icon = "swords",
+                    Duration = 2
+                })
+                
+                local success = forceAttackNearest()
+                if not success then
+                    WindUI:Notify({
+                        Title = "Attack Failed",
+                        Content = "Could not start attack",
+                        Icon = "x-circle",
+                        Duration = 2
+                    })
+                end
+            else
+                WindUI:Notify({
+                    Title = "No Mobs Found",
+                    Content = "No mobs of selected type found",
+                    Icon = "x-circle",
+                    Duration = 2
+                })
+            end
+        end
+    })
+    
+    AttackTab:Button({
+        Title = "🔥 Attack Blight Pyromancer",
+        Desc = "Force attack Blight Pyromancer if available",
+        Callback = function()
+            local priorityMobs = findPriorityMobs()
+            local blightPyromancer = nil
+            
+            for _, mob in ipairs(priorityMobs) do
+                if mob.Type == "Blight Pyromancer" then
+                    blightPyromancer = mob
+                    break
+                end
+            end
+            
+            if blightPyromancer then
+                WindUI:Notify({
+                    Title = "Attacking Blight Pyromancer",
+                    Content = string.format("Distance: %.0f studs", blightPyromancer.Distance),
+                    Icon = "skull",
+                    Duration = 2
+                })
+                
+                IsAttacking = true
+                task.spawn(function()
+                    local success = tweenToTargetAndAttack(blightPyromancer, true)
+                    IsAttacking = false
+                    if not success then
+                        WindUI:Notify({
+                            Title = "Attack Failed",
+                            Content = "Could not attack Blight Pyromancer",
+                            Icon = "x-circle",
+                            Duration = 2
+                        })
+                    end
+                end)
+            else
+                WindUI:Notify({
+                    Title = "Not Found",
+                    Content = "Blight Pyromancer not found in range",
+                    Icon = "search",
+                    Duration = 2
+                })
+            end
+        end
+    })
+    
+    AttackTab:Button({
+        Title = "🛑 Stop Attack",
+        Desc = "Stop current attack",
+        Callback = function()
+            IsAttacking = false
+            CurrentAttackTarget = nil
+            WindUI:Notify({
+                Title = "Attack Stopped",
+                Content = "Current attack stopped",
+                Icon = "stop-circle",
+                Duration = 1.5
+            })
         end
     })
     
@@ -2779,12 +2813,23 @@ local function createMainWindow()
         Desc = "Rock & Mob ESP Settings"
     })
     
+    ESPTab:Paragraph({
+        Title = "🗿 ESP System",
+        Desc = "Auto-detect and highlight nearby rocks and mobs"
+    })
+    
     ESPTab:Toggle({
         Title = "👁️ Rock ESP",
         Desc = "Toggle rock ESP visibility",
         Value = ESPEnabled,
         Callback = function(value)
             ESPEnabled = toggleRockESP()
+            WindUI:Notify({
+                Title = "Rock ESP",
+                Content = ESPEnabled and "ENABLED" or "DISABLED",
+                Icon = ESPEnabled and "eye" or "eye-off",
+                Duration = 2
+            })
         end
     })
     
@@ -2794,173 +2839,310 @@ local function createMainWindow()
         Value = MobESPEnabled,
         Callback = function(value)
             MobESPEnabled = toggleMobESP()
+            WindUI:Notify({
+                Title = "Mob ESP",
+                Content = MobESPEnabled and "ENABLED" or "DISABLED",
+                Icon = MobESPEnabled and "eye" or "eye-off",
+                Duration = 2
+            })
         end
     })
     
     ESPTab:Slider({
-        Title = "Rock ESP Distance",
-        Desc = "Maximum distance to show rock ESP",
-        Value = ESPDistance,
-        Min = 10,
-        Max = 2000,
+        Title = "📏 Rock ESP Distance",
+        Desc = "Maximum rock ESP render distance",
+        Value = {Default = ESPDistance, Min = 10, Max = 2000, Step = 10},
         Callback = function(value)
-            ESPDistance = setESPDistance(value)
+            setESPDistance(value)
+            WindUI:Notify({
+                Title = "Rock ESP Distance",
+                Content = "Set to: " .. value .. " studs",
+                Icon = "ruler",
+                Duration = 2
+            })
         end
     })
     
     ESPTab:Slider({
-        Title = "Mob ESP Distance",
-        Desc = "Maximum distance to show mob ESP",
-        Value = MobESPDistance,
-        Min = 10,
-        Max = 1000,
+        Title = "📏 Mob ESP Distance",
+        Desc = "Maximum mob ESP render distance",
+        Value = {Default = MobESPDistance, Min = 10, Max = 1000, Step = 10},
         Callback = function(value)
-            MobESPDistance = setMobESPDistance(value)
+            setMobESPDistance(value)
+            WindUI:Notify({
+                Title = "Mob ESP Distance",
+                Content = "Set to: " .. value .. " studs",
+                Icon = "ruler",
+                Duration = 2
+            })
         end
     })
     
-    ESPTab:Toggle({
-        Title = "❤️ Show Health Bars",
-        Desc = "Show health bars on mobs",
-        Value = true,
-        Callback = function(value)
-            for _, config in pairs(MobConfigs) do
-                config.HealthBar = value
+    ESPTab:Button({
+        Title = "📊 Detailed Status",
+        Desc = "Show current rock & mob detection status",
+        Callback = function()
+            local rockCounts = getRocksCountByType()
+            local mobCounts = getMobsCountByType()
+            local nearestRock = findNearestRock()
+            local nearestMob = findNearestMob()
+            local priorityMobs = findPriorityMobs()
+            
+            local statusText = "=== ESP DETECTION STATUS ===\n\n"
+            
+            statusText = statusText .. "🗿 ROCKS DETECTED:\n"
+            statusText = statusText .. "   Total Rocks: " .. rockCounts.Total .. "\n"
+            
+            if nearestRock then
+                statusText = statusText .. "   Nearest Rock: " .. nearestRock.Type .. "\n"
+                statusText = statusText .. "   Distance: " .. string.format("%.0f", nearestRock.Distance) .. " studs\n"
+            else
+                statusText = statusText .. "   Nearest Rock: None\n"
             end
-            cleanupESP()
+            
+            statusText = statusText .. "\n👹 MOBS DETECTED:\n"
+            statusText = statusText .. "   Total Mobs: " .. mobCounts.Total .. "\n"
+            
+            if nearestMob then
+                statusText = statusText .. "   Nearest Mob: " .. nearestMob.Type .. "\n"
+                statusText = statusText .. "   Distance: " .. string.format("%.0f", nearestMob.Distance) .. " studs\n"
+            else
+                statusText = statusText .. "   Nearest Mob: None\n"
+            end
+            
+            if #priorityMobs > 0 then
+                statusText = statusText .. "\n🔥 PRIORITY MOBS:\n"
+                for i, mob in ipairs(priorityMobs) do
+                    if i <= 3 then
+                        statusText = statusText .. string.format("   %d. %s (%.0f studs)\n", i, mob.Type, mob.Distance)
+                    end
+                end
+            end
+            
+            statusText = statusText .. "\n🎯 TARGET SETTINGS:\n"
+            statusText = statusText .. "   Rock Type: " .. SelectedRockType .. "\n"
+            statusText = statusText .. "   Mob Type: " .. SelectedMobType .. "\n"
+            statusText = statusText .. "   Rock ESP Distance: " .. ESPDistance .. " studs\n"
+            statusText = statusText .. "   Mob ESP Distance: " .. MobESPDistance .. " studs\n"
+            statusText = statusText .. "   Attack While Mining: " .. (flags.AttackWhileMining and "ON" or "OFF") .. "\n"
+            
+            WindUI:Dialog({
+                Title = "ESP Detection Status",
+                Content = statusText,
+                Icon = "info",
+                Buttons = {
+                    {
+                        Title = "OK",
+                        Callback = function() end
+                    }
+                }
+            })
         end
     })
     
     ESPTab:Button({
         Title = "🧹 Clear All ESP",
         Desc = "Remove all ESP highlights",
-        Callback = cleanupESP
-    })
-    
-    ESPTab:Button({
-        Title = "🔄 Refresh ESP",
-        Desc = "Refresh ESP displays",
         Callback = function()
             cleanupESP()
-            task.wait(0.5)
-            scanForRocks()
-            scanForMobs()
+            WindUI:Notify({
+                Title = "ESP Cleared",
+                Content = "All ESP objects removed",
+                Icon = "broom",
+                Duration = 2
+            })
         end
     })
     
     -- Tab 5: Settings
     local SettingsTab = MainWindow:Tab({
         Title = "⚙️ Settings",
-        Desc = "System Configuration"
+        Desc = "System Settings"
     })
     
-    SettingsTab:Button({
-        Title = "🔧 Reinitialize System",
-        Desc = "Reinitialize all systems",
-        Callback = function()
-            print("[SYSTEM] Reinitializing...")
-            pcall(initializeRemotes)
-            pcall(hookMinigameModules)
-        end
+    SettingsTab:Paragraph({
+        Title = "⚙️ System Settings",
+        Desc = "Configure system behavior"
     })
     
-    SettingsTab:Button({
-        Title = "🔄 Restart ESP Scanner",
-        Desc = "Restart ESP scanning service",
-        Callback = function()
-            if ESPConnection then
-                task.cancel(ESPConnection)
-            end
-            ESPConnection = task.spawn(autoESPUpdate)
-        end
-    })
-    
-    local keyOptions = {"RightControl", "LeftControl", "RightShift", "LeftShift", "F1", "F2", "F3", "F4"}
-    SettingsTab:Dropdown({
-        Title = "Toggle Keybind",
-        Desc = "Key to toggle GUI",
-        Value = toggleKeybind,
-        Options = keyOptions,
-        Callback = function(value)
-            toggleKeybind = value
+    SettingsTab:Keybind({
+        Title = "🎮 GUI Toggle Key",
+        Desc = "Key to toggle GUI visibility",
+        Value = "RightControl",
+        Callback = function(key)
+            toggleKeybind = key
+            WindUI:Notify({
+                Title = "Keybind Updated",
+                Content = "Press " .. key .. " to toggle GUI",
+                Icon = "keyboard",
+                Duration = 3
+            })
         end
     })
     
     SettingsTab:Toggle({
-        Title = "Auto Initialize",
-        Desc = "Auto initialize on startup",
-        Value = flags.AutoInitialize,
+        Title = "🔍 Debug Mode",
+        Desc = "Enable debug logging",
+        Value = debugMode,
         Callback = function(value)
-            flags.AutoInitialize = value
+            debugMode = value
+            WindUI:Notify({
+                Title = "Debug Mode",
+                Content = value and "ENABLED" or "DISABLED",
+                Icon = value and "bug" or "bug-off",
+                Duration = 2
+            })
         end
     })
     
     SettingsTab:Button({
-        Title = "📜 View Logs",
-        Desc = "Show system status and logs",
+        Title = "📊 System Status",
+        Desc = "Display current system status",
         Callback = function()
-            print("=== System Status ===")
-            print("Auto Mine: " .. tostring(AutoMineEnabled))
-            print("Auto Attack: " .. tostring(flags.AutoAttackEnabled))
-            print("Rock ESP: " .. tostring(ESPEnabled))
-            print("Mob ESP: " .. tostring(MobESPEnabled))
-            print("Noclip: " .. tostring(NOCLIP_ENABLED))
-            print("Forge Hooks Active: " .. tostring(isHammerMinigameActive))
-            print("Rocks Found: " .. tostring(getRocksCountByType().Total))
-            print("Mobs Found: " .. tostring(getMobsCountByType().Total))
+            local rockCounts = getRocksCountByType()
+            local mobCounts = getMobsCountByType()
+            local nearestRock = findNearestRock()
+            local nearestMob = findNearestMob()
+            local priorityMobs = findPriorityMobs()
+            
+            local statusText = "=== JAWIRSCRIPT SYSTEM STATUS ===\n\n"
+            
+            statusText = statusText .. "🔧 FORGE SYSTEM:\n"
+            statusText = statusText .. "   Auto Hammer: " .. tostring(flags.AutoHammerEnabled) .. "\n"
+            statusText = statusText .. "   Skip Melt: " .. tostring(flags.SkipMeltEnabled) .. "\n"
+            statusText = statusText .. "   Skip Pour: " .. tostring(flags.SkipPourEnabled) .. "\n"
+            statusText = statusText .. "   Hooks Active: " .. (originalMinigames.MeltStart and "YES" or "NO") .. "\n\n"
+            
+            statusText = statusText .. "⛏️ AUTO MINE SYSTEM:\n"
+            statusText = statusText .. "   Enabled: " .. tostring(AutoMineEnabled) .. "\n"
+            statusText = statusText .. "   Is Mining: " .. tostring(IsMining) .. "\n"
+            statusText = statusText .. "   Target Rock Type: " .. SelectedRockType .. "\n"
+            statusText = statusText .. "   Speed: " .. MINING_SPEED .. " studs/sec\n"
+            statusText = statusText .. "   Search Radius: " .. MINING_SEARCH_RADIUS .. " studs\n"
+            statusText = statusText .. "   Attack While Mining: " .. (flags.AttackWhileMining and "ON" or "OFF") .. "\n\n"
+            
+            statusText = statusText .. "⚔️ AUTO ATTACK SYSTEM:\n"
+            statusText = statusText .. "   Enabled: " .. tostring(flags.AutoAttackEnabled) .. "\n"
+            statusText = statusText .. "   Is Attacking: " .. tostring(IsAttacking) .. "\n"
+            statusText = statusText .. "   Target Mob Type: " .. SelectedMobType .. "\n"
+            statusText = statusText .. "   Speed: " .. ATTACK_SPEED .. " studs/sec\n"
+            statusText = statusText .. "   Search Radius: " .. ATTACK_SEARCH_RADIUS .. " studs\n\n"
+            
+            statusText = statusText .. "🗿 ESP SYSTEM:\n"
+            statusText = statusText .. "   Rock ESP: " .. (ESPEnabled and "ON" or "OFF") .. "\n"
+            statusText = statusText .. "   Mob ESP: " .. (MobESPEnabled and "ON" or "OFF") .. "\n"
+            statusText = statusText .. "   Rocks Detected: " .. rockCounts.Total .. "\n"
+            statusText = statusText .. "   Mobs Detected: " .. mobCounts.Total .. "\n"
+            statusText = statusText .. "   Priority Mobs: " .. #priorityMobs .. "\n\n"
+            
+            if nearestRock then
+                statusText = statusText .. "🎯 NEAREST ROCK:\n"
+                statusText = statusText .. "   Type: " .. nearestRock.Type .. "\n"
+                statusText = statusText .. "   Distance: " .. string.format("%.0f", nearestRock.Distance) .. " studs\n"
+            end
+            
+            if nearestMob then
+                statusText = statusText .. "🎯 NEAREST MOB:\n"
+                statusText = statusText .. "   Type: " .. nearestMob.Type .. "\n"
+                statusText = statusText .. "   Distance: " .. string.format("%.0f", nearestMob.Distance) .. " studs\n"
+            end
+            
+            if #priorityMobs > 0 then
+                statusText = statusText .. "\n🔥 TOP PRIORITY MOBS:\n"
+                for i = 1, math.min(3, #priorityMobs) do
+                    local mob = priorityMobs[i]
+                    statusText = statusText .. string.format("   %d. %s (%.0f studs)\n", i, mob.Type, mob.Distance)
+                end
+            end
+            
+            statusText = statusText .. "\n🎮 CONTROLS:\n"
+            statusText = statusText .. "   GUI Visible: " .. tostring(guiVisible) .. "\n"
+            statusText = statusText .. "   Toggle Key: " .. toggleKeybind .. "\n"
+            statusText = statusText .. "   Tip: Auto mining will attack Blight Pyromancer first!"
+            
+            WindUI:Dialog({
+                Title = "System Status",
+                Content = statusText,
+                Icon = "info",
+                Buttons = {
+                    {
+                        Title = "OK",
+                        Callback = function() end
+                    }
+                }
+            })
         end
     })
     
     SettingsTab:Button({
-        Title = "💾 Save Settings",
-        Desc = "Save current settings",
+        Title = "🛑 Emergency Stop",
+        Desc = "Stop all auto systems immediately",
         Callback = function()
-            print("[SETTINGS] Save feature coming soon!")
+            WindUI:Notify({
+                Title = "Emergency Stop",
+                Content = "Stopping all systems...",
+                Icon = "alert-octagon",
+                Duration = 2
+            })
+            stopAutoHammer()
+            AutoMineEnabled = false
+            flags.AutoAttackEnabled = false
+            
+            if MineConnection then
+                MineConnection:Disconnect()
+                MineConnection = nil
+            end
+            
+            if AttackConnection then
+                AttackConnection:Disconnect()
+                AttackConnection = nil
+            end
+            
+            IsMining = false
+            IsAttacking = false
+            CurrentMineTarget = nil
+            CurrentAttackTarget = nil
+            disableNoclip()
         end
     })
     
     SettingsTab:Button({
-        Title = "📥 Load Settings",
-        Desc = "Load saved settings",
+        Title = "🧹 Cleanup All",
+        Desc = "Clean up all system resources",
         Callback = function()
-            print("[SETTINGS] Load feature coming soon!")
+            WindUI:Notify({
+                Title = "Cleanup",
+                Content = "Cleaning up all systems...",
+                Icon = "broom",
+                Duration = 2
+            })
+            stopAutoHammer()
+            cleanupESP()
+            
+            if MineConnection then
+                MineConnection:Disconnect()
+                MineConnection = nil
+            end
+            
+            if AttackConnection then
+                AttackConnection:Disconnect()
+                AttackConnection = nil
+            end
+            
+            disableNoclip()
         end
     })
     
-    -- Tab 6: Info
-    local InfoTab = MainWindow:Tab({
-        Title = "📋 Info",
-        Desc = "System Information"
-    })
-    
-    InfoTab:Label({
-        Title = "JawirScript v2.0",
-        Desc = "Complete Automation System"
-    })
-    
-    InfoTab:Label({
-        Title = "Features",
-        Desc = "✅ Auto Forge Skipper\n✅ Auto Mining System\n✅ Auto Attack System\n✅ Rock & Mob ESP\n✅ NoClip & Flight\n✅ Priority Target System\n✅ GUI with Full Settings"
-    })
-    
-    InfoTab:Label({
-        Title = "⚠️ Important Note",
-        Desc = "This script only detects MOBS, not PLAYERS.\nAll attacks are directed only at game mobs."
-    })
-    
-    InfoTab:Label({
-        Title = "Controls",
-        Desc = toggleKeybind .. " - Toggle GUI\nGUI contains all settings"
-    })
-    
-    print("[GUI] WindUI Window created with all settings")
+    print("[GUI] All tabs created successfully")
     return MainWindow
 end
 
 ----------------------------------------------------------------
 -- ===================== INITIALIZATION ======================
 ----------------------------------------------------------------
+
 local function setupEventListeners()
+    -- GUI keybind listener
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if not gameProcessed then
             if input.KeyCode == Enum.KeyCode[toggleKeybind] then
@@ -2969,27 +3151,42 @@ local function setupEventListeners()
         end
     end)
     
+    -- Character added listener untuk noclip
     LocalPlayer.CharacterAdded:Connect(function(character)
         task.wait(1)
+        print("[SYSTEM] Character spawned, checking noclip status...")
+        
         if (AutoMineEnabled or IsAttacking) and NOCLIP_ENABLED then
+            print("[SYSTEM] Enabling noclip for new character")
+            task.wait(0.5)
             enableNoclip()
         end
     end)
     
+    -- Heartbeat connection untuk update noclip
+    RunService.Heartbeat:Connect(function()
+        updateNoclipDuringAction()
+    end)
+    
+    -- Update player blacklist
     for _, player in pairs(Players:GetPlayers()) do
         PlayerBlacklist[player.Name] = true
+        print("[BLACKLIST] Added player to blacklist: " .. player.Name)
     end
     
     Players.PlayerAdded:Connect(function(player)
         PlayerBlacklist[player.Name] = true
+        print("[BLACKLIST] Added player to blacklist: " .. player.Name)
     end)
     
     Players.PlayerRemoving:Connect(function(player)
         PlayerBlacklist[player.Name] = nil
+        print("[BLACKLIST] Removed player from blacklist: " .. player.Name)
     end)
 end
 
 local function startESPScanning()
+    -- Start auto ESP scanning
     if ESPConnection then
         task.cancel(ESPConnection)
         ESPConnection = nil
@@ -3001,40 +3198,109 @@ end
 
 local function initializeSystem()
     print("========================================")
-    print("JAWIRSCRIPT AUTO FORGE & MINE SYSTEM v2.0")
+    print("JAWIRSCRIPT AUTO FORGE & MINE SYSTEM")
     print("========================================")
     print("Features: Forge Skip + Auto Mine + Auto Attack")
     print("ESP: Hanya deteksi MOB (TIDAK deteksi PLAYER)")
-    print("GUI: Press " .. toggleKeybind .. " to toggle")
-    print("GUI contains ALL settings and controls")
+    print("GUI: Press RightControl to toggle")
     print("========================================")
     
+    -- Initialize player blacklist
     for _, player in pairs(Players:GetPlayers()) do
         PlayerBlacklist[player.Name] = true
     end
     
-    pcall(initializeRemotes)
-    pcall(createMainWindow)
-    pcall(setupEventListeners)
-    pcall(startESPScanning)
+    local remoteSuccess = initializeRemotes()
+    if not remoteSuccess then
+        warn("[SYSTEM] Remote initialization failed, continuing without remotes")
+    else
+        print("[SYSTEM] Remotes initialized successfully")
+    end
     
-    task.spawn(function()
-        task.wait(5)
-        pcall(hookMinigameModules)
-    end)
+    -- Create GUI
+    local guiSuccess = pcall(createMainWindow)
+    if not guiSuccess then
+        print("[SYSTEM] Failed to create GUI, creating fallback")
+        -- Coba buat fallback GUI
+        pcall(function()
+            local ScreenGui = Instance.new("ScreenGui")
+            ScreenGui.Name = "JawirScriptFallback"
+            ScreenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+            
+            local TextLabel = Instance.new("TextLabel")
+            TextLabel.Size = UDim2.new(0, 200, 0, 50)
+            TextLabel.Position = UDim2.new(0, 10, 0, 10)
+            TextLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+            TextLabel.BackgroundTransparency = 0.5
+            TextLabel.Text = "JawirScript Loaded\nPress RightControl"
+            TextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            TextLabel.Font = Enum.Font.SourceSansBold
+            TextLabel.TextSize = 14
+            TextLabel.Parent = ScreenGui
+            
+            -- Tambahkan button untuk noclip toggle
+            local NoclipButton = Instance.new("TextButton")
+            NoclipButton.Size = UDim2.new(0, 200, 0, 30)
+            NoclipButton.Position = UDim2.new(0, 10, 0, 70)
+            NoclipButton.Text = "Toggle Noclip: " .. (NOCLIP_ENABLED and "ON" or "OFF")
+            NoclipButton.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+            NoclipButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            NoclipButton.Parent = ScreenGui
+            NoclipButton.MouseButton1Click:Connect(function()
+                toggleNoclip()
+                NoclipButton.Text = "Toggle Noclip: " .. (NOCLIP_ENABLED and "ON" or "OFF")
+            end)
+            
+            print("[SYSTEM] Fallback GUI created")
+        end)
+    else
+        print("[SYSTEM] GUI created successfully")
+    end
     
+    setupEventListeners()
+    startESPScanning()
+    
+    -- Auto activate hooks
     task.spawn(function()
         task.wait(8)
-        if flags.AutoAttackEnabled then
-            pcall(startAutoAttackLoop)
+        if not originalMinigames.MeltStart then
+            local hookSuccess = pcall(hookMinigameModules)
+            if hookSuccess then
+                print("[SYSTEM] Forge hooks activated")
+            else
+                print("[SYSTEM] Failed to activate forge hooks")
+            end
         end
     end)
     
+    -- Auto start attack system
+    task.spawn(function()
+        task.wait(10)
+        if flags.AutoAttackEnabled then
+            local attackSuccess = pcall(startAutoAttackLoop)
+            if attackSuccess then
+                print("[SYSTEM] Auto attack system started")
+            else
+                print("[SYSTEM] Failed to start auto attack system")
+            end
+        end
+    end)
+    
+    -- Initial noclip setup
+    task.spawn(function()
+        task.wait(2)
+        if NOCLIP_ENABLED then
+            print("[SYSTEM] Initial noclip setup")
+            enableNoclip()
+        end
+    end)
+    
+    -- Cleanup on player leave
     Players.LocalPlayer.AncestryChanged:Connect(function()
         if not Players.LocalPlayer.Parent then
-            pcall(stopAutoHammer)
-            pcall(cleanupESP)
-            pcall(disableNoclip)
+            print("[SYSTEM] Player leaving, cleaning up...")
+            stopAutoHammer()
+            cleanupESP()
             
             if MineConnection then
                 MineConnection:Disconnect()
@@ -3050,50 +3316,84 @@ local function initializeSystem()
                 task.cancel(ESPConnection)
                 ESPConnection = nil
             end
+            
+            disableNoclip()
         end
     end)
     
+    -- Cleanup on game close
     game:BindToClose(function()
-        pcall(stopAutoHammer)
-        pcall(cleanupESP)
-        pcall(disableNoclip)
+        print("[SYSTEM] Game closing, cleaning up...")
+        stopAutoHammer()
+        cleanupESP()
+        disableNoclip()
     end)
     
     print("[SYSTEM] Initialization complete")
     print("[SYSTEM] Press " .. toggleKeybind .. " to toggle GUI")
-    print("[SYSTEM] GUI contains all settings and controls")
     print("========================================")
 end
 
+-- Delayed initialization
 task.spawn(function()
-    task.wait(2)
+    task.wait(5)
     print("[SYSTEM] Starting initialization...")
-    pcall(initializeSystem)
+    local success, err = pcall(initializeSystem)
+    if not success then
+        warn("[SYSTEM] Initialization failed: " .. tostring(err))
+        -- Coba buat notifikasi sederhana
+        pcall(function()
+            local ScreenGui = Instance.new("ScreenGui")
+            ScreenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+            
+            local TextLabel = Instance.new("TextLabel")
+            TextLabel.Size = UDim2.new(0, 300, 0, 100)
+            TextLabel.Position = UDim2.new(0.5, -150, 0.5, -50)
+            TextLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+            TextLabel.BackgroundTransparency = 0.3
+            TextLabel.Text = "JawirScript Loaded\nPress RightControl to open GUI"
+            TextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            TextLabel.Font = Enum.Font.SourceSansBold
+            TextLabel.TextSize = 16
+            TextLabel.TextWrapped = true
+            TextLabel.Parent = ScreenGui
+        end)
+    end
 end)
 
 return {
     ActivateHooks = hookMinigameModules,
     StopHammer = stopAutoHammer,
     StartHammer = startAutoHammer,
+    SetDebugMode = function(value) debugMode = value end,
+    
     ToggleAutoMine = toggleAutoMine,
+    SetMiningCooldown = setMiningCooldown,
+    SetMiningSpeed = setMiningSpeed,
+    SetSearchRadius = setSearchRadius,
+    SetFlyHeight = setFlyHeight,
+    SetMineDelay = setMineDelay,
     ForceMine = forceMineNearest,
     ToggleNoclip = toggleNoclip,
+    
     ToggleAutoAttack = toggleAutoAttack,
+    SetAttackCooldown = setAttackCooldown,
+    SetAttackSpeed = setAttackSpeed,
+    SetAttackSearchRadius = setAttackSearchRadius,
+    SetAttackDelay = setAttackDelay,
     ForceAttack = forceAttackNearest,
+    SetAttackWhileMining = function(value) flags.AttackWhileMining = value end,
+    
     ToggleRockESP = toggleRockESP,
     ToggleMobESP = toggleMobESP,
-    CleanupESP = cleanupESP,
-    ToggleGUI = toggleGUI,
-    GetStatus = function()
-        return {
-            AutoMine = AutoMineEnabled,
-            AutoAttack = flags.AutoAttackEnabled,
-            RockESP = ESPEnabled,
-            MobESP = MobESPEnabled,
-            Noclip = NOCLIP_ENABLED,
-            ForgeActive = isHammerMinigameActive,
-            RockCount = getRocksCountByType().Total,
-            MobCount = getMobsCountByType().Total
-        }
-    end
+    SetESPDistance = setESPDistance,
+    SetMobESPDistance = setMobESPDistance,
+    SetRockType = setRockType,
+    SetMobType = setMobType,
+    GetRockCounts = getRocksCountByType,
+    GetMobCounts = getMobsCountByType,
+    GetAllRockTypes = getAllRockTypes,
+    GetAllMobTypes = getAllMobTypes,
+    
+    ToggleGUI = toggleGUI
 }
