@@ -2335,39 +2335,69 @@ local function createMainWindow()
     
     -- Coba load WindUI
     if not loadUILibrary() then
-        print("[GUI] WindUI failed to load, using fallback GUI")
-        MainWindow = createFallbackGUI()
-        return MainWindow
+    print("[GUI] WindUI failed to load, using fallback GUI")
+    MainWindow = createFallbackGUI()
+    return MainWindow
+end
+
+print("[GUI] Creating WindUI Window...")
+
+local success, window = pcall(function()
+    return WindUI:CreateWindow({
+        Title = "JawirScript - Mobile",
+        Folder = "JawirScriptMobileSystem",
+        Theme = "Dark",
+
+        -- 📱 MOBILE SIZE
+        Size = UDim2.new(0, 400, 0, 500),
+        Radius = 12,
+        Resizable = true,
+        Acrylic = true,
+        Background = Color3.fromRGB(30, 30, 35),
+        Author = "Mobile Compatible - Tap Button 📱",
+
+        -- ⛔ MATIKAN KEYBOARD TOGGLE (MOBILE)
+        ToggleKey = nil,
+
+        -- ✅ WINDUI MOBILE TOGGLE BUTTON
+        OpenButton = {
+            Enabled = true,
+
+            Title = "Jawir",
+            Icon = "smartphone",
+
+            -- 📍 POSISI AWAL (KANAN TENGAH LAYAR)
+            Position = UDim2.new(1, -70, 0.5, -30),
+
+            -- 📱 MOBILE SETTINGS
+            OnlyIcon = true,
+            Draggable = true,
+
+            -- 🎨 STYLE
+            Color = ColorSequence.new(
+                Color3.fromRGB(33, 150, 243),
+                Color3.fromRGB(76, 175, 80)
+            )
+        }
+    })
+end)
+
+if success then
+    MainWindow = window
+else
+    warn("[GUI] Failed to create WindUI window")
+    return
+end
+
+
+task.spawn(function()
+    task.wait(1)
+    if MainWindow and MainWindow.OpenButtonMain then
+        MainWindow.OpenButtonMain.Active = true
+        MainWindow.OpenButtonMain.Draggable = true
     end
-    
-    print("[GUI] Creating WindUI Window...")
-    
-    local success, window = pcall(function()
-        return WindUI:CreateWindow({
-            Title = "JawirScript - Mobile",
-            Folder = "JawirScriptMobileSystem",
-            Theme = "Dark",
-            Size = UDim2.new(0, 400, 0, 500), -- Lebih kecil untuk mobile
-            Radius = 12,
-            Resizable = true,
-            Acrylic = true,
-            Background = Color3.fromRGB(30, 30, 35),
-            Author = "Mobile Compatible - Tap 📱 button",
-            ToggleKey = Enum.KeyCode.RightControl,
-            OpenButton = {
-                Title = "📱 Jawir",
-                Icon = "smartphone",
-                Enabled = true,
-                Position = UDim2.new(0.5, -60, 0, 20),
-                OnlyIcon = false,
-                Draggable = true,
-                Color = ColorSequence.new(
-                    Color3.fromHex("#2196F3"),
-                    Color3.fromHex("#4CAF50")
-                )
-            }
-        })
-    end)
+end)
+
     
     if not success then
         print("[GUI] Failed to create WindUI window, using fallback: " .. tostring(window))
