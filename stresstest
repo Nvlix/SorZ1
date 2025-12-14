@@ -1,0 +1,868 @@
+-- ============================================================
+-- JAWIRSCRIPT AUTO FORGE SYSTEM - COMPLETE SETTINGS
+-- ============================================================
+-- Dilengkapi dengan semua pengaturan slider dan dropdown
+-- ============================================================
+
+-- ... (Semua kode sebelumnya tetap sama sampai bagian GUI) ...
+
+----------------------------------------------------------------
+-- ====================== WINDUI GUI DENGAN SEMUA SETTINGS ========================
+----------------------------------------------------------------
+
+local function toggleGUI()
+    if not MainWindow then 
+        print("[GUI] MainWindow not created yet")
+        return 
+    end
+    
+    if guiVisible then
+        MainWindow:Close()
+        if MainWindow.OpenButtonMain then
+            MainWindow.OpenButtonMain:Visible(true)
+        end
+        guiVisible = false
+        print("[GUI] GUI hidden")
+    else
+        MainWindow:Open()
+        if MainWindow.OpenButtonMain then
+            MainWindow.OpenButtonMain:Visible(false)
+        end
+        guiVisible = true
+        print("[GUI] GUI shown")
+    end
+end
+
+local function createMainWindow()
+    if not loadUILibrary() then
+        print("[GUI] Failed to load WindUI Library")
+        -- Fallback GUI sederhana
+        local ScreenGui = Instance.new("ScreenGui")
+        ScreenGui.Name = "JawirScriptGUI"
+        ScreenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+        
+        local Frame = Instance.new("Frame")
+        Frame.Size = UDim2.new(0, 400, 0, 500)
+        Frame.Position = UDim2.new(0.5, -200, 0.5, -250)
+        Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+        Frame.BorderSizePixel = 0
+        Frame.Active = true
+        Frame.Draggable = true
+        Frame.Parent = ScreenGui
+        
+        local Title = Instance.new("TextLabel")
+        Title.Size = UDim2.new(1, 0, 0, 40)
+        Title.Position = UDim2.new(0, 0, 0, 0)
+        Title.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+        Title.Text = "JawirScript - Complete Settings"
+        Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+        Title.Font = Enum.Font.SourceSansBold
+        Title.TextSize = 18
+        Title.Parent = Frame
+        
+        local CloseButton = Instance.new("TextButton")
+        CloseButton.Size = UDim2.new(0, 30, 0, 30)
+        CloseButton.Position = UDim2.new(1, -35, 0, 5)
+        CloseButton.Text = "X"
+        CloseButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+        CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        CloseButton.Font = Enum.Font.SourceSansBold
+        CloseButton.TextSize = 18
+        CloseButton.Parent = Frame
+        CloseButton.MouseButton1Click:Connect(function()
+            Frame.Visible = not Frame.Visible
+            guiVisible = Frame.Visible
+        end)
+        
+        print("[GUI] Fallback GUI created")
+        return {Open = function() Frame.Visible = true end, Close = function() Frame.Visible = false end}
+    end
+    
+    print("[GUI] Creating WindUI Window with Complete Settings...")
+    
+    local success, window = pcall(function()
+        return WindUI:CreateWindow({
+            Title = "JawirScript - Complete Settings",
+            Folder = "JawirScriptSystem",
+            Theme = "Dark",
+            Size = UDim2.new(0, 650, 0, 800),
+            Radius = 12,
+            Resizable = true,
+            Acrylic = true,
+            Background = Color3.fromRGB(30, 30, 35),
+            Author = "Forge + Mine + Attack System",
+            ToggleKey = Enum.KeyCode.RightControl,
+            OpenButton = {
+                Title = "JawirScript",
+                Icon = "settings",
+                Enabled = true,
+                Position = UDim2.new(0.5, -75, 0, 15),
+                OnlyIcon = false,
+                Draggable = true,
+                Color = ColorSequence.new(
+                    Color3.fromHex("#667eea"),
+                    Color3.fromHex("#764ba2")
+                )
+            }
+        })
+    end)
+    
+    if not success then
+        print("[GUI] Failed to create WindUI window: " .. tostring(window))
+        return nil
+    end
+    
+    MainWindow = window
+    print("[GUI] WindUI Window created successfully")
+    
+    -- Tab 1: Forge Settings
+    local ForgeTab = MainWindow:Tab({
+        Title = "⚒️ Forge",
+        Desc = "Auto Forge Skipper Settings"
+    })
+    
+    ForgeTab:Toggle({
+        Title = "🔨 Auto Hammer",
+        Desc = "Automatically hammer during minigame",
+        Value = flags.AutoHammerEnabled,
+        Callback = function(value)
+            flags.AutoHammerEnabled = value
+        end
+    })
+    
+    ForgeTab:Toggle({
+        Title = "🔥 Skip Melt",
+        Desc = "Skip melt minigame",
+        Value = flags.SkipMeltEnabled,
+        Callback = function(value)
+            flags.SkipMeltEnabled = value
+        end
+    })
+    
+    ForgeTab:Toggle({
+        Title = "💧 Skip Pour",
+        Desc = "Skip pour minigame",
+        Value = flags.SkipPourEnabled,
+        Callback = function(value)
+            flags.SkipPourEnabled = value
+        end
+    })
+    
+    ForgeTab:Slider({
+        Title = "⏱️ Hammer Delay",
+        Desc = "Delay between hammer hits",
+        Default = HAMMER_COOLDOWN,
+        Min = 0.1,
+        Max = 2.0,
+        Step = 0.1,
+        Callback = function(value)
+            HAMMER_COOLDOWN = value
+        end
+    })
+    
+    ForgeTab:Button({
+        Title = "🔧 Activate Hooks",
+        Desc = "Activate forge hooks now",
+        Callback = function()
+            hookMinigameModules()
+        end
+    })
+    
+    ForgeTab:Button({
+        Title = "🛑 Stop Hammer",
+        Desc = "Stop auto hammer immediately",
+        Callback = function()
+            stopAutoHammer()
+        end
+    })
+    
+    -- Tab 2: Auto Mine Settings
+    local MineTab = MainWindow:Tab({
+        Title = "⛏️ Mining",
+        Desc = "Auto Mining System Settings"
+    })
+    
+    MineTab:Toggle({
+        Title = "⛏️ Enable Auto Mine",
+        Desc = "Toggle auto mining system",
+        Value = AutoMineEnabled,
+        Callback = function(value)
+            AutoMineEnabled = toggleAutoMine()
+        end
+    })
+    
+    -- Mining Speed
+    MineTab:Slider({
+        Title = "⚡ Mining Speed",
+        Desc = "Speed of movement to rocks",
+        Default = MINING_SPEED,
+        Min = 10,
+        Max = 500,
+        Step = 10,
+        Callback = function(value)
+            setMiningSpeed(value)
+        end
+    })
+    
+    -- Mining Cooldown
+    MineTab:Slider({
+        Title = "⏳ Mining Cooldown",
+        Desc = "Delay between mining targets",
+        Default = MINING_COOLDOWN,
+        Min = 0.5,
+        Max = 10,
+        Step = 0.5,
+        Callback = function(value)
+            setMiningCooldown(value)
+        end
+    })
+    
+    -- Search Radius
+    MineTab:Slider({
+        Title = "🔍 Search Radius",
+        Desc = "Distance to search for rocks",
+        Default = MINING_SEARCH_RADIUS,
+        Min = 10,
+        Max = 5000,
+        Step = 50,
+        Callback = function(value)
+            setSearchRadius(value)
+        end
+    })
+    
+    -- Fly Height
+    MineTab:Slider({
+        Title = "🕊️ Fly Height",
+        Desc = "Height to fly above rocks",
+        Default = FLY_HEIGHT,
+        Min = 0,
+        Max = 100,
+        Step = 5,
+        Callback = function(value)
+            setFlyHeight(value)
+        end
+    })
+    
+    -- Mining Delay
+    MineTab:Slider({
+        Title = "⏱️ Mining Delay",
+        Desc = "Delay between mining hits",
+        Default = MINE_DELAY,
+        Min = 0.1,
+        Max = 2,
+        Step = 0.1,
+        Callback = function(value)
+            setMineDelay(value)
+        end
+    })
+    
+    -- Noclip
+    MineTab:Toggle({
+        Title = "👻 Noclip",
+        Desc = "Enable noclip while mining",
+        Value = NOCLIP_ENABLED,
+        Callback = function(value)
+            NOCLIP_ENABLED = toggleNoclip()
+        end
+    })
+    
+    -- Rock Type Selection
+    local rockTypes = getAllRockTypes()
+    table.insert(rockTypes, 1, "Any")
+    MineTab:Dropdown({
+        Title = "🗿 Rock Type Filter",
+        Desc = "Select specific rock type to mine",
+        Default = SelectedRockType,
+        Items = rockTypes,
+        Callback = function(value)
+            setRockType(value)
+        end
+    })
+    
+    MineTab:Button({
+        Title = "🎯 Mine Now",
+        Desc = "Mine nearest rock immediately",
+        Callback = function()
+            forceMineNearest()
+        end
+    })
+    
+    -- Tab 3: Auto Attack Settings
+    local AttackTab = MainWindow:Tab({
+        Title = "⚔️ Attack",
+        Desc = "Auto Attack System Settings"
+    })
+    
+    AttackTab:Toggle({
+        Title = "⚔️ Enable Auto Attack",
+        Desc = "Toggle auto attack system",
+        Value = flags.AutoAttackEnabled,
+        Callback = function(value)
+            flags.AutoAttackEnabled = toggleAutoAttack()
+        end
+    })
+    
+    AttackTab:Toggle({
+        Title = "🔥 Attack While Mining",
+        Desc = "Attack priority mobs while mining",
+        Value = flags.AttackWhileMining,
+        Callback = function(value)
+            flags.AttackWhileMining = value
+        end
+    })
+    
+    -- Attack Speed
+    AttackTab:Slider({
+        Title = "⚡ Attack Speed",
+        Desc = "Speed of movement to mobs",
+        Default = ATTACK_SPEED,
+        Min = 10,
+        Max = 500,
+        Step = 10,
+        Callback = function(value)
+            setAttackSpeed(value)
+        end
+    })
+    
+    -- Attack Cooldown
+    AttackTab:Slider({
+        Title = "⏳ Attack Cooldown",
+        Desc = "Delay between attacking targets",
+        Default = ATTACK_COOLDOWN,
+        Min = 0.5,
+        Max = 10,
+        Step = 0.5,
+        Callback = function(value)
+            setAttackCooldown(value)
+        end
+    })
+    
+    -- Attack Search Radius
+    AttackTab:Slider({
+        Title = "🔍 Attack Radius",
+        Desc = "Distance to search for mobs",
+        Default = ATTACK_SEARCH_RADIUS,
+        Min = 10,
+        Max = 1000,
+        Step = 10,
+        Callback = function(value)
+            setAttackSearchRadius(value)
+        end
+    })
+    
+    -- Attack Delay
+    AttackTab:Slider({
+        Title = "⏱️ Attack Delay",
+        Desc = "Delay between attack hits",
+        Default = ATTACK_DELAY,
+        Min = 0.1,
+        Max = 2,
+        Step = 0.1,
+        Callback = function(value)
+            setAttackDelay(value)
+        end
+    })
+    
+    -- Mob Type Selection
+    local mobTypes = getAllMobTypes()
+    table.insert(mobTypes, 1, "Any")
+    AttackTab:Dropdown({
+        Title = "👹 Mob Type Filter",
+        Desc = "Select specific mob type to attack",
+        Default = SelectedMobType,
+        Items = mobTypes,
+        Callback = function(value)
+            setMobType(value)
+        end
+    })
+    
+    -- Priority Mobs Toggles
+    AttackTab:Divider({Title = "Priority Mobs"})
+    
+    local priorityMobToggles = {
+        {"Blight Pyromancer", true},
+        {"Reaper", true},
+        {"Elite Deathaxe Skeleton", true},
+        {"Elite Rogue Skeleton", true},
+        {"Deathaxe Skeleton", true},
+        {"Axe Skeleton", true},
+    }
+    
+    for i, mobData in ipairs(priorityMobToggles) do
+        local mobName, defaultValue = mobData[1], mobData[2]
+        AttackTab:Toggle({
+            Title = "🔥 " .. mobName,
+            Desc = "Set as priority target",
+            Value = PriorityMobs[mobName] or defaultValue,
+            Callback = function(value)
+                PriorityMobs[mobName] = value
+            end
+        })
+    end
+    
+    AttackTab:Button({
+        Title = "🎯 Attack Now",
+        Desc = "Attack nearest mob immediately",
+        Callback = function()
+            forceAttackNearest()
+        end
+    })
+    
+    -- Tab 4: ESP Settings
+    local ESPTab = MainWindow:Tab({
+        Title = "🗿 ESP",
+        Desc = "Rock & Mob ESP Settings"
+    })
+    
+    ESPTab:Toggle({
+        Title = "🗿 Rock ESP",
+        Desc = "Toggle rock ESP visibility",
+        Value = ESPEnabled,
+        Callback = function(value)
+            ESPEnabled = toggleRockESP()
+        end
+    })
+    
+    ESPTab:Toggle({
+        Title = "👹 Mob ESP",
+        Desc = "Toggle mob ESP visibility",
+        Value = MobESPEnabled,
+        Callback = function(value)
+            MobESPEnabled = toggleMobESP()
+        end
+    })
+    
+    -- Rock ESP Distance
+    ESPTab:Slider({
+        Title = "📏 Rock ESP Distance",
+        Desc = "Maximum rock ESP render distance",
+        Default = ESPDistance,
+        Min = 10,
+        Max = 2000,
+        Step = 50,
+        Callback = function(value)
+            setESPDistance(value)
+        end
+    })
+    
+    -- Mob ESP Distance
+    ESPTab:Slider({
+        Title = "📏 Mob ESP Distance",
+        Desc = "Maximum mob ESP render distance",
+        Default = MobESPDistance,
+        Min = 10,
+        Max = 1000,
+        Step = 50,
+        Callback = function(value)
+            setMobESPDistance(value)
+        end
+    })
+    
+    -- ESP Update Interval
+    ESPTab:Slider({
+        Title = "🔄 ESP Update Interval",
+        Desc = "How often ESP updates",
+        Default = ESPUpdateInterval,
+        Min = 0.1,
+        Max = 5,
+        Step = 0.1,
+        Callback = function(value)
+            ESPUpdateInterval = value
+        end
+    })
+    
+    ESPTab:Toggle({
+        Title = "🐞 Debug Mode",
+        Desc = "Enable debug logging",
+        Value = debugMode,
+        Callback = function(value)
+            debugMode = value
+        end
+    })
+    
+    ESPTab:Button({
+        Title = "🧹 Clean ESP",
+        Desc = "Remove all ESP highlights",
+        Callback = function()
+            cleanupESP()
+        end
+    })
+    
+    ESPTab:Button({
+        Title = "📊 ESP Status",
+        Desc = "Show current ESP detection status",
+        Callback = function()
+            local rockCounts = getRocksCountByType()
+            local mobCounts = getMobsCountByType()
+            
+            local status = "=== ESP DETECTION STATUS ===\n\n"
+            status = status .. "🗿 ROCKS DETECTED: " .. rockCounts.Total .. "\n"
+            status = status .. "👹 MOBS DETECTED: " .. mobCounts.Total .. "\n\n"
+            
+            status = status .. "🔧 SETTINGS:\n"
+            status = status .. "• Rock ESP Distance: " .. ESPDistance .. " studs\n"
+            status = status .. "• Mob ESP Distance: " .. MobESPDistance .. " studs\n"
+            status = status .. "• Update Interval: " .. ESPUpdateInterval .. " seconds\n"
+            status = status .. "• Rock Type Filter: " .. SelectedRockType .. "\n"
+            status = status .. "• Mob Type Filter: " .. SelectedMobType .. "\n"
+            
+            print(status)
+        end
+    })
+    
+    -- Tab 5: System Settings
+    local SystemTab = MainWindow:Tab({
+        Title = "⚙️ System",
+        Desc = "System Configuration"
+    })
+    
+    SystemTab:Keybind({
+        Title = "🎮 GUI Toggle Key",
+        Desc = "Press to toggle GUI visibility",
+        Default = "RightControl",
+        Callback = function(key)
+            toggleKeybind = key
+        end
+    })
+    
+    SystemTab:Toggle({
+        Title = "🚀 Auto Initialize",
+        Desc = "Auto start systems on load",
+        Value = flags.AutoInitialize,
+        Callback = function(value)
+            flags.AutoInitialize = value
+        end
+    })
+    
+    SystemTab:Dropdown({
+        Title = "🎯 Default Action",
+        Desc = "What to do when key is pressed",
+        Default = "Mine",
+        Items = {"Mine", "Attack", "Both", "None"},
+        Callback = function(value)
+            print("Default action set to: " .. value)
+        end
+    })
+    
+    SystemTab:Slider({
+        Title = "📊 Notification Duration",
+        Desc = "How long notifications stay visible",
+        Default = 3,
+        Min = 1,
+        Max = 10,
+        Step = 0.5,
+        Callback = function(value)
+            print("Notification duration: " .. value .. " seconds")
+        end
+    })
+    
+    SystemTab:Colorpicker({
+        Title = "🎨 GUI Theme Color",
+        Desc = "Main GUI color theme",
+        Default = Color3.fromRGB(0, 120, 215),
+        Callback = function(color)
+            print("Theme color set to: " .. tostring(color))
+        end
+    })
+    
+    SystemTab:Divider({Title = "Advanced Settings"})
+    
+    SystemTab:Toggle({
+        Title = "🔧 Developer Mode",
+        Desc = "Show advanced developer options",
+        Value = false,
+        Callback = function(value)
+            print("Developer mode: " .. (value and "ENABLED" or "DISABLED"))
+        end
+    })
+    
+    SystemTab:Slider({
+        Title = "⚙️ System Performance",
+        Desc = "Adjust system performance (higher = faster)",
+        Default = 5,
+        Min = 1,
+        Max = 10,
+        Step = 1,
+        Callback = function(value)
+            print("Performance level: " .. value)
+        end
+    })
+    
+    SystemTab:Button({
+        Title = "📁 Export Settings",
+        Desc = "Export current settings to file",
+        Callback = function()
+            local settings = {
+                Mining = {
+                    Speed = MINING_SPEED,
+                    Cooldown = MINING_COOLDOWN,
+                    SearchRadius = MINING_SEARCH_RADIUS,
+                    FlyHeight = FLY_HEIGHT,
+                    Delay = MINE_DELAY,
+                    RockType = SelectedRockType,
+                    Noclip = NOCLIP_ENABLED
+                },
+                Attack = {
+                    Speed = ATTACK_SPEED,
+                    Cooldown = ATTACK_COOLDOWN,
+                    SearchRadius = ATTACK_SEARCH_RADIUS,
+                    Delay = ATTACK_DELAY,
+                    MobType = SelectedMobType,
+                    AttackWhileMining = flags.AttackWhileMining
+                },
+                ESP = {
+                    RockDistance = ESPDistance,
+                    MobDistance = MobESPDistance,
+                    UpdateInterval = ESPUpdateInterval,
+                    RockEnabled = ESPEnabled,
+                    MobEnabled = MobESPEnabled
+                },
+                Forge = {
+                    AutoHammer = flags.AutoHammerEnabled,
+                    SkipMelt = flags.SkipMeltEnabled,
+                    SkipPour = flags.SkipPourEnabled,
+                    HammerDelay = HAMMER_COOLDOWN
+                }
+            }
+            
+            print("=== EXPORTED SETTINGS ===")
+            for category, data in pairs(settings) do
+                print("[" .. category .. "]")
+                for key, value in pairs(data) do
+                    print("  " .. key .. ": " .. tostring(value))
+                end
+            end
+        end
+    })
+    
+    SystemTab:Button({
+        Title = "🔄 Reset All Settings",
+        Desc = "Reset all settings to default",
+        Callback = function()
+            -- Reset mining settings
+            MINING_SPEED = 100
+            MINING_COOLDOWN = 0.5
+            MINING_SEARCH_RADIUS = 1000
+            FLY_HEIGHT = 15
+            MINE_DELAY = 0.5
+            SelectedRockType = "Any"
+            NOCLIP_ENABLED = true
+            
+            -- Reset attack settings
+            ATTACK_SPEED = 150
+            ATTACK_COOLDOWN = 1.0
+            ATTACK_SEARCH_RADIUS = 300
+            ATTACK_DELAY = 0.3
+            SelectedMobType = "Any"
+            flags.AttackWhileMining = true
+            
+            -- Reset ESP settings
+            ESPDistance = 500
+            MobESPDistance = 300
+            ESPUpdateInterval = 0.5
+            ESPEnabled = true
+            MobESPEnabled = true
+            
+            -- Reset forge settings
+            HAMMER_COOLDOWN = 0.5
+            flags.AutoHammerEnabled = true
+            flags.SkipMeltEnabled = true
+            flags.SkipPourEnabled = true
+            
+            print("✅ All settings reset to default!")
+        end
+    })
+    
+    SystemTab:Button({
+        Title = "🛑 Emergency Stop",
+        Desc = "Stop all systems immediately",
+        Callback = function()
+            stopAutoHammer()
+            AutoMineEnabled = false
+            flags.AutoAttackEnabled = false
+            
+            if MineConnection then
+                MineConnection:Disconnect()
+                MineConnection = nil
+            end
+            
+            if AttackConnection then
+                AttackConnection:Disconnect()
+                AttackConnection = nil
+            end
+            
+            IsMining = false
+            IsAttacking = false
+            CurrentMineTarget = nil
+            CurrentAttackTarget = nil
+            disableNoclip()
+            
+            print("🛑 All systems stopped!")
+        end
+    })
+    
+    -- Tab 6: Quick Actions
+    local QuickTab = MainWindow:Tab({
+        Title = "🚀 Quick",
+        Desc = "Quick Actions & Status"
+    })
+    
+    QuickTab:Paragraph({
+        Title = "⚡ Quick Actions",
+        Desc = "Quick access to common functions"
+    })
+    
+    QuickTab:Button({
+        Title = "⛏️ Start Auto Mine",
+        Desc = "Start auto mining immediately",
+        Callback = function()
+            if not AutoMineEnabled then
+                toggleAutoMine()
+            end
+        end
+    })
+    
+    QuickTab:Button({
+        Title = "⚔️ Start Auto Attack",
+        Desc = "Start auto attack immediately",
+        Callback = function()
+            if not flags.AutoAttackEnabled then
+                toggleAutoAttack()
+            end
+        end
+    })
+    
+    QuickTab:Button({
+        Title = "🔨 Start Both",
+        Desc = "Start both mining and attack",
+        Callback = function()
+            if not AutoMineEnabled then
+                toggleAutoMine()
+            end
+            if not flags.AutoAttackEnabled then
+                toggleAutoAttack()
+            end
+        end
+    })
+    
+    QuickTab:Divider()
+    
+    QuickTab:Button({
+        Title = "🎯 Mine Nearest",
+        Desc = "Mine nearest rock now",
+        Callback = forceMineNearest
+    })
+    
+    QuickTab:Button({
+        Title = "🎯 Attack Nearest",
+        Desc = "Attack nearest mob now",
+        Callback = forceAttackNearest
+    })
+    
+    QuickTab:Divider()
+    
+    QuickTab:Button({
+        Title = "🔄 Refresh ESP",
+        Desc = "Force refresh ESP scanning",
+        Callback = function()
+            cleanupESP()
+            task.wait(0.5)
+            scanForRocks()
+            scanForMobs()
+        end
+    })
+    
+    QuickTab:Button({
+        Title = "📊 System Status",
+        Desc = "Show current system status",
+        Callback = function()
+            local status = "=== SYSTEM STATUS ===\n\n"
+            
+            status = status .. "🔧 FORGE SYSTEM:\n"
+            status = status .. "• Auto Hammer: " .. (flags.AutoHammerEnabled and "✅" or "❌") .. "\n"
+            status = status .. "• Skip Melt: " .. (flags.SkipMeltEnabled and "✅" or "❌") .. "\n"
+            status = status .. "• Skip Pour: " .. (flags.SkipPourEnabled and "✅" or "❌") .. "\n\n"
+            
+            status = status .. "⛏️ AUTO MINE:\n"
+            status = status .. "• Enabled: " .. (AutoMineEnabled and "✅" or "❌") .. "\n"
+            status = status .. "• Is Mining: " .. (IsMining and "✅" or "❌") .. "\n"
+            status = status .. "• Speed: " .. MINING_SPEED .. " studs/sec\n"
+            status = status .. "• Radius: " .. MINING_SEARCH_RADIUS .. " studs\n\n"
+            
+            status = status .. "⚔️ AUTO ATTACK:\n"
+            status = status .. "• Enabled: " .. (flags.AutoAttackEnabled and "✅" or "❌") .. "\n"
+            status = status .. "• Is Attacking: " .. (IsAttacking and "✅" or "❌") .. "\n"
+            status = status .. "• Attack While Mining: " .. (flags.AttackWhileMining and "✅" or "❌") .. "\n"
+            status = status .. "• Speed: " .. ATTACK_SPEED .. " studs/sec\n\n"
+            
+            status = status .. "🗿 ESP SYSTEM:\n"
+            status = status .. "• Rock ESP: " .. (ESPEnabled and "✅" or "❌") .. "\n"
+            status = status .. "• Mob ESP: " .. (MobESPEnabled and "✅" or "❌") .. "\n"
+            
+            local rockCounts = getRocksCountByType()
+            local mobCounts = getMobsCountByType()
+            status = status .. "• Rocks Detected: " .. rockCounts.Total .. "\n"
+            status = status .. "• Mobs Detected: " .. mobCounts.Total .. "\n"
+            
+            print(status)
+        end
+    })
+    
+    print("[GUI] All settings tabs created successfully")
+    return MainWindow
+end
+
+----------------------------------------------------------------
+-- ===================== INITIALIZATION ======================
+----------------------------------------------------------------
+
+local function initializeSystem()
+    print("========================================")
+    print("JAWIRSCRIPT COMPLETE SETTINGS SYSTEM")
+    print("========================================")
+    print("📊 Features:")
+    print("  • ⚒️  Auto Forge Skipper")
+    print("  • ⛏️  Auto Mine System")
+    print("  • ⚔️  Auto Attack System") 
+    print("  • 🗿 Rock & Mob ESP")
+    print("  • ⚙️  Complete Settings GUI")
+    print("========================================")
+    print("🎮 Controls:")
+    print("  • Press " .. toggleKeybind .. " to toggle GUI")
+    print("  • Mobile: Tap button to open GUI")
+    print("========================================")
+    
+    -- Initialize remotes
+    initializeRemotes()
+    
+    -- Create GUI
+    createMainWindow()
+    
+    -- Setup event listeners
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if not gameProcessed and input.KeyCode == Enum.KeyCode[toggleKeybind] then
+            toggleGUI()
+        end
+    end)
+    
+    -- Start systems
+    task.spawn(function()
+        task.wait(3)
+        startESPScanning()
+        
+        if flags.AutoInitialize then
+            task.wait(2)
+            hookMinigameModules()
+            
+            task.wait(2)
+            if flags.AutoAttackEnabled then
+                startAutoAttackLoop()
+            end
+        end
+    end)
+    
+    print("[SYSTEM] Initialization complete!")
+end
+
+-- Start the system
+task.spawn(initializeSystem)
