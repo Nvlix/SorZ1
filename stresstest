@@ -1376,107 +1376,100 @@ local function getMobsCountByType()
 end
 
 ----------------------------------------------------------------
--- ==================== AUTO MINE SYSTEM =====================
+-- ==================== NOCLIP FUNCTIONS ======================
 ----------------------------------------------------------------
 
--- FUNGSI NO-CLIP (DIPINDAHKAN KE ATAS)
+-- FUNGSI UNTUK ENABLE NOCLIP
 local function enableNoclip()
-    if not NOCLIP_ENABLED then return end
-    
-    local character = LocalPlayer.Character
-    if not character then return end
-    
-    for _, part in pairs(character:GetDescendants()) do
-        if part:IsA("BasePart") and part.CanCollide then
-            part.CanCollide = false
-        end
+    if not NOCLIP_ENABLED then 
+        print("[NOCLIP] Noclip disabled in settings")
+        return 
     end
-end
-
-local function disableNoclip()
-    local character = LocalPlayer.Character
-    if not character then return end
     
-    for _, part in pairs(character:GetDescendants()) do
-        if part:IsA("BasePart") then
-            part.CanCollide = true
-        end
+    local character = LocalPlayer.Character
+    if not character then 
+        print("[NOCLIP] No character found")
+        return 
     end
-end
-
-local function getRocksData()
-    local rocks = {}
-    local character = LocalPlayer.Character
     
-    if not character then return rocks end
-    
-    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-    if not humanoidRootPart then return rocks end
-    
-    for obj, espData in pairs(highlightedObjects) do
-        if obj and obj.Parent and espData.Type then
-            if SelectedRockType == "Any" or SelectedRockType == espData.Type then
-                local distance = (obj.Position - humanoidRootPart.Position).Magnitude
-                
-                if distance <= MINING_SEARCH_RADIUS then
-                    table.insert(rocks, {
-                        Type = espData.Type,
-                        Position = obj.Position,
-                        Distance = distance,
-                        Object = obj,
-                        Config = espData.Config,
-                        Priority = espData.Config.Priority or 15
-                    })
-                end
+    local success = pcall(function()
+        -- Set semua bagian menjadi tidak bisa tabrakan
+        for _, part in pairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
             end
         end
+        
+        -- Tambahkan BodyVelocity untuk kontrol yang lebih baik
+        local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+        if humanoidRootPart then
+            -- Hapus BodyVelocity lama jika ada
+            local oldVelocity = humanoidRootPart:FindFirstChild("NoclipVelocity")
+            if oldVelocity then
+                oldVelocity:Destroy()
+            end
+            
+            -- Buat BodyVelocity baru
+            local bodyVelocity = Instance.new("BodyVelocity")
+            bodyVelocity.Name = "NoclipVelocity"
+            bodyVelocity.MaxForce = Vector3.new(40000, 40000, 40000)
+            bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+            bodyVelocity.Parent = humanoidRootPart
+        end
+        
+        print("[NOCLIP] Noclip enabled successfully")
+    end)
+    
+    if not success then
+        print("[NOCLIP] Failed to enable noclip")
+    end
+end
+
+-- FUNGSI UNTUK DISABLE NOCLIP
+local function disableNoclip()
+    local character = LocalPlayer.Character
+    if not character then 
+        print("[NOCLIP] No character found")
+        return 
     end
     
-    table.sort(rocks, function(a, b)
-        if a.Priority ~= b.Priority then
-            return a.Priority < b.Priority
+    local success = pcall(function()
+        -- Set semua bagian menjadi bisa tabrakan
+        for _, part in pairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = true
+            end
         end
-        return a.Distance < b.Distance
+        
+        -- Hapus BodyVelocity
+        local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+        if humanoidRootPart then
+            local bodyVelocity = humanoidRootPart:FindFirstChild("NoclipVelocity")
+            if bodyVelocity then
+                bodyVelocity:Destroy()
+            end
+        end
+        
+        print("[NOCLIP] Noclip disabled successfully")
     end)
     
-    return rocks
+    if not success then
+        print("[NOCLIP] Failed to disable noclip")
+    end
 end
 
-local function findNearestRock()
-    local rocks = getRocksData()
-    if #rocks == 0 then return nil end
-    return rocks[1]
+-- FUNGSI UNTUK MENGUPDATE NOCLIP SETIAP FRAME SAAT MINING/ATTACKING
+local function updateNoclipDuringAction()
+    if (AutoMineEnabled and IsMining) or (flags.AutoAttackEnabled and IsAttacking) then
+        if NOCLIP_ENABLED then
+            enableNoclip()
+        end
+    end
 end
 
-local function callMiningRemotes()
-    local success1, result1 = pcall(function()
-        local args = {"Weapon"}
-        return ToolServiceRF:InvokeServer(unpack(args))
-    end)
-    
-    task.wait(0.1)
-    
-    local success2, result2 = pcall(function()
-        local args = {"Pickaxe"}
-        return ToolServiceRF:InvokeServer(unpack(args))
-    end)
-    
-    task.wait(0.1)
-    
-    local success3, result3 = pcall(function()
-        local args = {"Weapon"}
-        return ToolServiceRF:InvokeServer(unpack(args))
-    end)
-    
-    task.wait(0.1)
-    
-    local success4, result4 = pcall(function()
-        local args = {"Pickaxe"}
-        return ToolServiceRF:InvokeServer(unpack(args))
-    end)
-    
-    return success1 and success2 and success3 and success4
-end
+----------------------------------------------------------------
+-- ==================== AUTO ATTACK SYSTEM ====================
+----------------------------------------------------------------
 
 local function callAttackRemotes()
     local success1, result1 = pcall(function()
@@ -1493,264 +1486,6 @@ local function callAttackRemotes()
     
     return success1 and success2
 end
-
-local function tweenToTargetAndAttack(targetData, isMob)
-    if not targetData or not targetData.Position then return false end
-    
-    local character = LocalPlayer.Character
-    if not character then return false end
-    
-    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-    if not humanoidRootPart then return false end
-    
-    -- CEK APAKAH INI PLAYER - JIKA YA, BATALKAN
-    if isMob and targetData.Model and isPlayerModel(targetData.Model) then
-        print("[AUTO " .. (isMob and "ATTACK" or "MINE") .. "] Cannot attack player: " .. targetData.Model.Name)
-        return false
-    end
-    
-    if isMob then
-        CurrentAttackTarget = targetData
-    else
-        CurrentMineTarget = targetData
-    end
-    
-    -- Enable noclip
-    enableNoclip()
-    
-    local targetPosition
-    if isMob then
-        targetPosition = targetData.Position + Vector3.new(0, 5, 0)
-    else
-        targetPosition = targetData.Position + Vector3.new(0, FLY_HEIGHT, 0)
-    end
-    
-    local distance = (humanoidRootPart.Position - targetPosition).Magnitude
-    local speed = isMob and ATTACK_SPEED or MINING_SPEED
-    local duration = math.max(0.5, distance / speed)
-    
-    local tweenInfo = TweenInfo.new(
-        duration,
-        Enum.EasingStyle.Linear,
-        Enum.EasingDirection.Out
-    )
-    
-    local tween = TweenService:Create(humanoidRootPart, tweenInfo, {
-        CFrame = CFrame.new(targetPosition)
-    })
-    
-    tween:Play()
-    
-    local completed = false
-    tween.Completed:Connect(function()
-        completed = true
-    end)
-    
-    local startTime = tick()
-    while not completed and tick() - startTime < duration + 2 do
-        task.wait(0.1)
-        enableNoclip()
-    end
-    
-    if completed then
-        local actionStartTime = tick()
-        local actionCount = 0
-        
-        local maxTime = isMob and 10 or 15
-        local actionDelay = isMob and ATTACK_DELAY or MINE_DELAY
-        
-        while (isMob and IsAttacking) or (not isMob and AutoMineEnabled and IsMining) and tick() - actionStartTime < maxTime do
-            if not targetData.Object or not targetData.Object.Parent then
-                print("[AUTO " .. (isMob and "ATTACK" or "MINE") .. "] Target disappeared")
-                break
-            end
-            
-            -- CEK APAKAH INI PLAYER SEBELUM MENYERANG
-            if isMob and targetData.Model and isPlayerModel(targetData.Model) then
-                print("[AUTO ATTACK] Target is player, stopping attack")
-                break
-            end
-            
-            if isMob and targetData.Model then
-                local humanoid = targetData.Model:FindFirstChildWhichIsA("Humanoid")
-                if humanoid and humanoid.Health <= 0 then
-                    print("[AUTO ATTACK] Mob defeated: " .. targetData.Type)
-                    break
-                end
-            end
-            
-            local success
-            if isMob then
-                success = callAttackRemotes()
-            else
-                success = callMiningRemotes()
-            end
-            
-            actionCount = actionCount + 1
-            
-            if success then
-                print(string.format("[AUTO %s] Action cycle #%d successful - %s (%.0f studs)", 
-                    isMob and "ATTACK" or "MINE", actionCount, targetData.Type, targetData.Distance))
-            else
-                print("[AUTO " .. (isMob and "ATTACK" or "MINE") .. "] Remote call failed")
-            end
-            
-            task.wait(actionDelay)
-        end
-        
-        print(string.format("[AUTO %s] Finished %s %s - %d cycles completed", 
-            isMob and "ATTACK" or "MINE", isMob and "attacking" or "mining", targetData.Type, actionCount))
-    end
-    
-    if isMob then
-        IsAttacking = false
-        CurrentAttackTarget = nil
-    else
-        IsMining = false
-        CurrentMineTarget = nil
-    end
-    
-    return true
-end
-
-local function tweenToRockAndMine(rockData)
-    return tweenToTargetAndAttack(rockData, false)
-end
-
-local function startAutoMineLoop()
-    if MineConnection then
-        MineConnection:Disconnect()
-        MineConnection = nil
-    end
-    
-    MineConnection = RunService.Heartbeat:Connect(function()
-        if not AutoMineEnabled then return end
-        if IsMining or IsAttacking then return end
-        
-        if not LocalPlayer.Character then
-            return
-        end
-        
-        if isHammerMinigameActive then
-            return
-        end
-        
-        if flags.AttackWhileMining then
-            local priorityMobs = findPriorityMobs()
-            if #priorityMobs > 0 then
-                print("[AUTO MINE] Priority mobs detected, attacking first")
-                attackPriorityMobs()
-                return
-            end
-        end
-        
-        local nearestRock = findNearestRock()
-        
-        if nearestRock then
-            IsMining = true
-            task.spawn(function()
-                print(string.format("[AUTO MINE] Starting mining on %s (%.0f studs away)", 
-                    nearestRock.Type, nearestRock.Distance))
-                
-                local success = tweenToRockAndMine(nearestRock)
-                IsMining = false
-                
-                if success then
-                    print("[AUTO MINE] Moving to next rock in " .. MINING_COOLDOWN .. " seconds")
-                    task.wait(MINING_COOLDOWN)
-                else
-                    print("[AUTO MINE] Mining failed, waiting before retry")
-                    task.wait(2)
-                end
-            end)
-        end
-    end)
-end
-
-local function toggleAutoMine()
-    AutoMineEnabled = not AutoMineEnabled
-    
-    if AutoMineEnabled then
-        print("[AUTO MINE] Auto mining system ENABLED")
-        startAutoMineLoop()
-    else
-        print("[AUTO MINE] Auto mining system DISABLED")
-        if MineConnection then
-            MineConnection:Disconnect()
-            MineConnection = nil
-        end
-        IsMining = false
-        CurrentMineTarget = nil
-        disableNoclip()
-    end
-    
-    return AutoMineEnabled
-end
-
-local function setMiningCooldown(seconds)
-    MINING_COOLDOWN = math.max(0.5, seconds)
-    print("[AUTO MINE] Mining cooldown set to: " .. MINING_COOLDOWN .. " seconds")
-end
-
-local function setMiningSpeed(speed)
-    MINING_SPEED = math.max(10, math.min(500, speed))
-    print("[AUTO MINE] Mining speed set to: " .. MINING_SPEED .. " studs/sec")
-end
-
-local function setSearchRadius(radius)
-    MINING_SEARCH_RADIUS = math.max(10, math.min(5000, radius))
-    print("[AUTO MINE] Search radius set to: " .. MINING_SEARCH_RADIUS .. " studs")
-end
-
-local function setFlyHeight(height)
-    FLY_HEIGHT = math.max(0, math.min(100, height))
-    print("[AUTO MINE] Fly height set to: " .. FLY_HEIGHT .. " studs")
-end
-
-local function toggleNoclip()
-    NOCLIP_ENABLED = not NOCLIP_ENABLED
-    
-    if not NOCLIP_ENABLED then
-        disableNoclip()
-    end
-    
-    print("[AUTO MINE] Noclip: " .. (NOCLIP_ENABLED and "ENABLED" or "DISABLED"))
-    return NOCLIP_ENABLED
-end
-
-local function setMineDelay(delay)
-    MINE_DELAY = math.max(0.1, math.min(2, delay))
-    print("[AUTO MINE] Mining delay set to: " .. MINE_DELAY .. " seconds")
-end
-
-local function forceMineNearest()
-    if IsMining then
-        print("[AUTO MINE] Already mining, please wait")
-        return false
-    end
-    
-    local nearestRock = findNearestRock()
-    
-    if nearestRock then
-        print(string.format("[AUTO MINE] Force mining %s (%.0f studs away)", 
-            nearestRock.Type, nearestRock.Distance))
-        
-        IsMining = true
-        task.spawn(function()
-            local success = tweenToRockAndMine(nearestRock)
-            IsMining = false
-            return success
-        end)
-        return true
-    else
-        print("[AUTO MINE] No rocks found to mine")
-        return false
-    end
-end
-
-----------------------------------------------------------------
--- ==================== AUTO ATTACK SYSTEM ====================
-----------------------------------------------------------------
 
 local function getMobsData()
     local mobs = {}
@@ -1833,6 +1568,143 @@ local function findPriorityMobs()
     end)
     
     return priorityMobs
+end
+
+local function tweenToTargetAndAttack(targetData, isMob)
+    if not targetData or not targetData.Position then 
+        print("[TWEEEN] No target data")
+        return false 
+    end
+    
+    local character = LocalPlayer.Character
+    if not character then 
+        print("[TWEEEN] No character")
+        return false 
+    end
+    
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    if not humanoidRootPart then 
+        print("[TWEEEN] No HumanoidRootPart")
+        return false 
+    end
+    
+    -- CEK APAKAH INI PLAYER - JIKA YA, BATALKAN
+    if isMob and isPlayerModel(targetData.Model) then
+        print("[TWEEEN] Cannot attack player: " .. targetData.Model.Name)
+        return false
+    end
+    
+    if isMob then
+        CurrentAttackTarget = targetData
+    else
+        CurrentMineTarget = targetData
+    end
+    
+    -- Enable noclip sebelum mulai bergerak
+    enableNoclip()
+    
+    local targetPosition
+    if isMob then
+        targetPosition = targetData.Position + Vector3.new(0, 5, 0)
+    else
+        targetPosition = targetData.Position + Vector3.new(0, FLY_HEIGHT, 0)
+    end
+    
+    local distance = (humanoidRootPart.Position - targetPosition).Magnitude
+    local speed = isMob and ATTACK_SPEED or MINING_SPEED
+    local duration = math.max(0.5, distance / speed)
+    
+    print(string.format("[TWEEEN] Moving to %s at %.0f studs/sec (%.1f seconds)", 
+        targetData.Type, speed, duration))
+    
+    local tweenInfo = TweenInfo.new(
+        duration,
+        Enum.EasingStyle.Linear,
+        Enum.EasingDirection.Out
+    )
+    
+    local tween = TweenService:Create(humanoidRootPart, tweenInfo, {
+        CFrame = CFrame.new(targetPosition)
+    })
+    
+    tween:Play()
+    
+    local completed = false
+    local connection = tween.Completed:Connect(function()
+        completed = true
+    end)
+    
+    -- Selama tween berjalan, update noclip
+    local startTime = tick()
+    while not completed and tick() - startTime < duration + 2 do
+        task.wait(0.1)
+        enableNoclip() -- Pastikan noclip tetap aktif
+    end
+    
+    connection:Disconnect()
+    
+    if completed then
+        print("[TWEEEN] Arrived at target")
+        local actionStartTime = tick()
+        local actionCount = 0
+        
+        local maxTime = isMob and 10 or 15
+        local actionDelay = isMob and ATTACK_DELAY or MINE_DELAY
+        
+        while (isMob and IsAttacking) or (not isMob and AutoMineEnabled and IsMining) and tick() - actionStartTime < maxTime do
+            if not targetData.Object or not targetData.Object.Parent then
+                print("[TWEEEN] Target disappeared")
+                break
+            end
+            
+            -- CEK APAKAH INI PLAYER SEBELUM MENYERANG
+            if isMob and isPlayerModel(targetData.Model) then
+                print("[TWEEEN] Target is player, stopping")
+                break
+            end
+            
+            if isMob and targetData.Model then
+                local humanoid = targetData.Model:FindFirstChildWhichIsA("Humanoid")
+                if humanoid and humanoid.Health <= 0 then
+                    print("[TWEEEN] Target defeated")
+                    break
+                end
+            end
+            
+            local success
+            if isMob then
+                success = callAttackRemotes()
+            else
+                success = callMiningRemotes()
+            end
+            
+            actionCount = actionCount + 1
+            
+            if success then
+                print(string.format("[TWEEEN] Action #%d successful", actionCount))
+            else
+                print("[TWEEEN] Remote call failed")
+            end
+            
+            -- Update noclip selama aksi
+            enableNoclip()
+            task.wait(actionDelay)
+        end
+        
+        print(string.format("[TWEEEN] Finished - %d cycles", actionCount))
+    else
+        print("[TWEEEN] Tween failed or timed out")
+    end
+    
+    if isMob then
+        IsAttacking = false
+        CurrentAttackTarget = nil
+    else
+        IsMining = false
+        CurrentMineTarget = nil
+    end
+    
+    return true
 end
 
 local function attackPriorityMobs()
@@ -1937,6 +1809,7 @@ local function toggleAutoAttack()
         end
         IsAttacking = false
         CurrentAttackTarget = nil
+        disableNoclip()
     end
     
     return flags.AutoAttackEnabled
@@ -1989,6 +1862,226 @@ local function forceAttackNearest()
         return true
     else
         print("[AUTO ATTACK] No mobs found to attack")
+        return false
+    end
+end
+
+----------------------------------------------------------------
+-- ==================== AUTO MINE SYSTEM =====================
+----------------------------------------------------------------
+
+local function getRocksData()
+    local rocks = {}
+    local character = LocalPlayer.Character
+    
+    if not character then return rocks end
+    
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    if not humanoidRootPart then return rocks end
+    
+    for obj, espData in pairs(highlightedObjects) do
+        if obj and obj.Parent and espData.Type then
+            if SelectedRockType == "Any" or SelectedRockType == espData.Type then
+                local distance = (obj.Position - humanoidRootPart.Position).Magnitude
+                
+                if distance <= MINING_SEARCH_RADIUS then
+                    table.insert(rocks, {
+                        Type = espData.Type,
+                        Position = obj.Position,
+                        Distance = distance,
+                        Object = obj,
+                        Config = espData.Config,
+                        Priority = espData.Config.Priority or 15
+                    })
+                end
+            end
+        end
+    end
+    
+    table.sort(rocks, function(a, b)
+        if a.Priority ~= b.Priority then
+            return a.Priority < b.Priority
+        end
+        return a.Distance < b.Distance
+    end)
+    
+    return rocks
+end
+
+local function findNearestRock()
+    local rocks = getRocksData()
+    if #rocks == 0 then return nil end
+    return rocks[1]
+end
+
+local function callMiningRemotes()
+    local success1, result1 = pcall(function()
+        local args = {"Weapon"}
+        return ToolServiceRF:InvokeServer(unpack(args))
+    end)
+    
+    task.wait(0.1)
+    
+    local success2, result2 = pcall(function()
+        local args = {"Pickaxe"}
+        return ToolServiceRF:InvokeServer(unpack(args))
+    end)
+    
+    task.wait(0.1)
+    
+    local success3, result3 = pcall(function()
+        local args = {"Weapon"}
+        return ToolServiceRF:InvokeServer(unpack(args))
+    end)
+    
+    task.wait(0.1)
+    
+    local success4, result4 = pcall(function()
+        local args = {"Pickaxe"}
+        return ToolServiceRF:InvokeServer(unpack(args))
+    end)
+    
+    return success1 and success2 and success3 and success4
+end
+
+local function tweenToRockAndMine(rockData)
+    return tweenToTargetAndAttack(rockData, false)
+end
+
+local function startAutoMineLoop()
+    if MineConnection then
+        MineConnection:Disconnect()
+        MineConnection = nil
+    end
+    
+    MineConnection = RunService.Heartbeat:Connect(function()
+        if not AutoMineEnabled then return end
+        if IsMining or IsAttacking then return end
+        
+        if not LocalPlayer.Character then
+            return
+        end
+        
+        if isHammerMinigameActive then
+            return
+        end
+        
+        if flags.AttackWhileMining then
+            local priorityMobs = findPriorityMobs()
+            if #priorityMobs > 0 then
+                print("[AUTO MINE] Priority mobs detected, attacking first")
+                attackPriorityMobs()
+                return
+            end
+        end
+        
+        local nearestRock = findNearestRock()
+        
+        if nearestRock then
+            IsMining = true
+            task.spawn(function()
+                print(string.format("[AUTO MINE] Starting mining on %s (%.0f studs away)", 
+                    nearestRock.Type, nearestRock.Distance))
+                
+                local success = tweenToRockAndMine(nearestRock)
+                IsMining = false
+                
+                if success then
+                    print("[AUTO MINE] Moving to next rock in " .. MINING_COOLDOWN .. " seconds")
+                    task.wait(MINING_COOLDOWN)
+                else
+                    print("[AUTO MINE] Mining failed, waiting before retry")
+                    task.wait(2)
+                end
+            end)
+        end
+    end)
+end
+
+local function toggleAutoMine()
+    AutoMineEnabled = not AutoMineEnabled
+    
+    if AutoMineEnabled then
+        print("[AUTO MINE] Auto mining system ENABLED")
+        -- Enable noclip saat mulai mining
+        if NOCLIP_ENABLED then
+            enableNoclip()
+        end
+        startAutoMineLoop()
+    else
+        print("[AUTO MINE] Auto mining system DISABLED")
+        if MineConnection then
+            MineConnection:Disconnect()
+            MineConnection = nil
+        end
+        IsMining = false
+        CurrentMineTarget = nil
+        -- Disable noclip saat berhenti mining
+        disableNoclip()
+    end
+    
+    return AutoMineEnabled
+end
+
+local function toggleNoclip()
+    NOCLIP_ENABLED = not NOCLIP_ENABLED
+    
+    if NOCLIP_ENABLED then
+        enableNoclip()
+    else
+        disableNoclip()
+    end
+    
+    print("[AUTO MINE] Noclip: " .. (NOCLIP_ENABLED and "ENABLED" or "DISABLED"))
+    return NOCLIP_ENABLED
+end
+
+local function setMiningCooldown(seconds)
+    MINING_COOLDOWN = math.max(0.5, seconds)
+    print("[AUTO MINE] Mining cooldown set to: " .. MINING_COOLDOWN .. " seconds")
+end
+
+local function setMiningSpeed(speed)
+    MINING_SPEED = math.max(10, math.min(500, speed))
+    print("[AUTO MINE] Mining speed set to: " .. MINING_SPEED .. " studs/sec")
+end
+
+local function setSearchRadius(radius)
+    MINING_SEARCH_RADIUS = math.max(10, math.min(5000, radius))
+    print("[AUTO MINE] Search radius set to: " .. MINING_SEARCH_RADIUS .. " studs")
+end
+
+local function setFlyHeight(height)
+    FLY_HEIGHT = math.max(0, math.min(100, height))
+    print("[AUTO MINE] Fly height set to: " .. FLY_HEIGHT .. " studs")
+end
+
+local function setMineDelay(delay)
+    MINE_DELAY = math.max(0.1, math.min(2, delay))
+    print("[AUTO MINE] Mining delay set to: " .. MINE_DELAY .. " seconds")
+end
+
+local function forceMineNearest()
+    if IsMining then
+        print("[AUTO MINE] Already mining, please wait")
+        return false
+    end
+    
+    local nearestRock = findNearestRock()
+    
+    if nearestRock then
+        print(string.format("[AUTO MINE] Force mining %s (%.0f studs away)", 
+            nearestRock.Type, nearestRock.Distance))
+        
+        IsMining = true
+        task.spawn(function()
+            local success = tweenToRockAndMine(nearestRock)
+            IsMining = false
+            return success
+        end)
+        return true
+    else
+        print("[AUTO MINE] No rocks found to mine")
         return false
     end
 end
@@ -3058,25 +3151,37 @@ local function setupEventListeners()
         end
     end)
     
-    -- Character added listener for noclip
+    -- Character added listener untuk noclip
     LocalPlayer.CharacterAdded:Connect(function(character)
         task.wait(1)
+        print("[SYSTEM] Character spawned, checking noclip status...")
+        
         if (AutoMineEnabled or IsAttacking) and NOCLIP_ENABLED then
+            print("[SYSTEM] Enabling noclip for new character")
+            task.wait(0.5)
             enableNoclip()
         end
+    end)
+    
+    -- Heartbeat connection untuk update noclip
+    RunService.Heartbeat:Connect(function()
+        updateNoclipDuringAction()
     end)
     
     -- Update player blacklist
     for _, player in pairs(Players:GetPlayers()) do
         PlayerBlacklist[player.Name] = true
+        print("[BLACKLIST] Added player to blacklist: " .. player.Name)
     end
     
     Players.PlayerAdded:Connect(function(player)
         PlayerBlacklist[player.Name] = true
+        print("[BLACKLIST] Added player to blacklist: " .. player.Name)
     end)
     
     Players.PlayerRemoving:Connect(function(player)
         PlayerBlacklist[player.Name] = nil
+        print("[BLACKLIST] Removed player from blacklist: " .. player.Name)
     end)
 end
 
@@ -3133,6 +3238,19 @@ local function initializeSystem()
             TextLabel.TextSize = 14
             TextLabel.Parent = ScreenGui
             
+            -- Tambahkan button untuk noclip toggle
+            local NoclipButton = Instance.new("TextButton")
+            NoclipButton.Size = UDim2.new(0, 200, 0, 30)
+            NoclipButton.Position = UDim2.new(0, 10, 0, 70)
+            NoclipButton.Text = "Toggle Noclip: " .. (NOCLIP_ENABLED and "ON" or "OFF")
+            NoclipButton.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+            NoclipButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            NoclipButton.Parent = ScreenGui
+            NoclipButton.MouseButton1Click:Connect(function()
+                toggleNoclip()
+                NoclipButton.Text = "Toggle Noclip: " .. (NOCLIP_ENABLED and "ON" or "OFF")
+            end)
+            
             print("[SYSTEM] Fallback GUI created")
         end)
     else
@@ -3168,9 +3286,19 @@ local function initializeSystem()
         end
     end)
     
+    -- Initial noclip setup
+    task.spawn(function()
+        task.wait(2)
+        if NOCLIP_ENABLED then
+            print("[SYSTEM] Initial noclip setup")
+            enableNoclip()
+        end
+    end)
+    
     -- Cleanup on player leave
     Players.LocalPlayer.AncestryChanged:Connect(function()
         if not Players.LocalPlayer.Parent then
+            print("[SYSTEM] Player leaving, cleaning up...")
             stopAutoHammer()
             cleanupESP()
             
@@ -3188,11 +3316,14 @@ local function initializeSystem()
                 task.cancel(ESPConnection)
                 ESPConnection = nil
             end
+            
+            disableNoclip()
         end
     end)
     
     -- Cleanup on game close
     game:BindToClose(function()
+        print("[SYSTEM] Game closing, cleaning up...")
         stopAutoHammer()
         cleanupESP()
         disableNoclip()
