@@ -1,236 +1,1557 @@
 -- ============================================================
--- JAWIRSCRIPT FINAL
--- Auto Mine + Auto Attack + ESP + Auto Hammer
--- WindUI + Floating Open Button (Show / Hide GUI)
+-- JAWIRSCRIPT AUTO FORGE SYSTEM
+-- ============================================================
+-- Gabungan sistem: Forge Skipper + Auto Mine System + Mob ESP & Auto Attack
+-- TIDAK DETEKSI PLAYER - HANYA MOB
+-- DUKUNGAN MOBILE: Tombol floating untuk toggle GUI
 -- ============================================================
 
----------------- SERVICES ----------------
-local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
-
+local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
 
----------------- LOAD WIND UI ----------------
-local WindUI = loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"
-))()
-
----------------- STATE ----------------
-local AutoMineEnabled = false
-local AutoAttackEnabled = false
-local AutoHammerEnabled = true
-
-local IsMining = false
-local IsAttacking = false
-local IsHammering = false
-
-local NOCLIP = true
-local FLY_HEIGHT = 15
-local MINING_RADIUS = 1000
-local ATTACK_RADIUS = 300
-
-local ESP_Rock = true
-local ESP_Mob = true
-
----------------- REMOTES ----------------
-local ToolServiceRF
+-- Remote references
 local ForgeServiceRF
+local ToolServiceRF
 local Knit
 
----------------- REMOTE INIT ----------------
-local function initRemotes()
-    local shared = ReplicatedStorage:FindFirstChild("Shared")
-    if not shared then return end
+-- FORGE STATE
+local isHammerMinigameActive = false
+local autoHammerRunning = false
+local originalMinigames = {}
+local lastHammerTime = 0
+local HAMMER_COOLDOWN = 0.5
+local hammerTask = nil
+local stopRequested = false
+local debugMode = false
+local hammerMinigameUI = nil
+local minigameCompleteFlag = false
 
-    local packages = shared:FindFirstChild("Packages")
-    if not packages then return end
+-- AUTO MINE STATE
+local AutoMineEnabled = false
+local IsMining = false
+local IsAttacking = false
+local CurrentMineTarget = nil
+local CurrentAttackTarget = nil
+local MineConnection = nil
+local AttackConnection = nil
+local MINING_COOLDOWN = 0.5
+local ATTACK_COOLDOWN = 1.0
+local MINING_SPEED = 100
+local ATTACK_SPEED = 150
+local MINING_SEARCH_RADIUS = 1000
+local ATTACK_SEARCH_RADIUS = 300
+local SelectedRockType = "Any"
+local SelectedMobType = "Any"
+local NOCLIP_ENABLED = true
+local FLY_HEIGHT = 15
+local MINE_DELAY = 0.5
+local ATTACK_DELAY = 0.3
 
-    if packages:FindFirstChild("Knit") then
-        Knit = require(packages.Knit)
-        local services = Knit.Services
+-- ESP STATE
+local highlightedObjects = {}
+local highlightedMobs = {}
+local ESPEnabled = true
+local MobESPEnabled = true
+local ESPDistance = 500
+local MobESPDistance = 300
+local ESPUpdateInterval = 0.5
+local lastESPUpdate = 0
+local ESPConnection = nil
 
-        if services.ToolService then
-            ToolServiceRF = services.ToolService.RF.ToolActivated
+-- Blacklist untuk player names
+local PlayerBlacklist = {}
+
+-- Priority mob untuk auto attack saat mining
+local PriorityMobs = {
+    ["Blight Pyromancer"] = true,  -- Highest priority for mining
+    ["Reaper"] = true,             -- High priority mobs
+    ["Elite Deathaxe Skeleton"] = true,
+    ["Elite Rogue Skeleton"] = true,
+    ["Deathaxe Skeleton"] = true,
+    ["Axe Skeleton"] = true,
+    ["Skeleton Rogue"] = true,
+    ["Brute Zombie"] = true,
+    ["Elite Zombie"] = true,
+    ["Delver Zombie"] = true,
+    ["Miner Zombie"] = true,
+    ["Zombie3"] = true,
+    ["Zombie"] = true,
+    ["Bomber"] = true,
+    ["Blazing Slime"] = true,
+    ["Slime"] = true
+}
+
+-- Rock configurations - UPDATED WITH NEW ROCKS
+local RockConfigs = {
+    -- Original rocks
+    Pebble = {
+        Name = "Pebble",
+        Color = Color3.fromRGB(180, 160, 140),
+        SizeOffset = Vector3.new(0, 2, 0),
+        BillboardSize = UDim2.new(0, 80, 0, 40),
+        TextSize = 16,
+        Priority = 12
+    },
+    Rock = {
+        Name = "Rock",
+        Color = Color3.fromRGB(150, 120, 90),
+        SizeOffset = Vector3.new(0, 3, 0),
+        BillboardSize = UDim2.new(0, 100, 0, 50),
+        TextSize = 18,
+        Priority = 11
+    },
+    Boulder = {
+        Name = "Boulder",
+        Color = Color3.fromRGB(120, 85, 60),
+        SizeOffset = Vector3.new(0, 4, 0),
+        BillboardSize = UDim2.new(0, 120, 0, 60),
+        TextSize = 20,
+        Priority = 10
+    },
+    
+    -- New Basalt rocks
+    ["Basalt"] = {
+        Name = "Basalt",
+        Color = Color3.fromRGB(50, 50, 60),
+        SizeOffset = Vector3.new(0, 3, 0),
+        BillboardSize = UDim2.new(0, 110, 0, 55),
+        TextSize = 18,
+        Priority = 9
+    },
+    ["Basalt Core"] = {
+        Name = "Basalt Core",
+        Color = Color3.fromRGB(70, 30, 40),
+        SizeOffset = Vector3.new(0, 4, 0),
+        BillboardSize = UDim2.new(0, 130, 0, 65),
+        TextSize = 20,
+        Priority = 8
+    },
+    ["Basalt Rock"] = {
+        Name = "Basalt Rock",
+        Color = Color3.fromRGB(60, 60, 70),
+        SizeOffset = Vector3.new(0, 3, 0),
+        BillboardSize = UDim2.new(0, 120, 0, 60),
+        TextSize = 19,
+        Priority = 8
+    },
+    ["Basalt Vein"] = {
+        Name = "Basalt Vein",
+        Color = Color3.fromRGB(80, 40, 50),
+        SizeOffset = Vector3.new(0, 4, 0),
+        BillboardSize = UDim2.new(0, 140, 0, 70),
+        TextSize = 21,
+        Priority = 7
+    },
+    
+    -- Crystal rocks
+    ["Crimson Crystal"] = {
+        Name = "Crimson Crystal",
+        Color = Color3.fromRGB(220, 20, 60),
+        SizeOffset = Vector3.new(0, 5, 0),
+        BillboardSize = UDim2.new(0, 150, 0, 75),
+        TextSize = 22,
+        Priority = 5
+    },
+    ["Earth Crystal"] = {
+        Name = "Earth Crystal",
+        Color = Color3.fromRGB(139, 69, 19),
+        SizeOffset = Vector3.new(0, 4, 0),
+        BillboardSize = UDim2.new(0, 140, 0, 70),
+        TextSize = 21,
+        Priority = 6
+    },
+    ["Light Crystal"] = {
+        Name = "Light Crystal",
+        Color = Color3.fromRGB(255, 255, 200),
+        SizeOffset = Vector3.new(0, 5, 0),
+        BillboardSize = UDim2.new(0, 150, 0, 75),
+        TextSize = 22,
+        Priority = 4
+    },
+    ["Violet Crystal"] = {
+        Name = "Violet Crystal",
+        Color = Color3.fromRGB(138, 43, 226),
+        SizeOffset = Vector3.new(0, 5, 0),
+        BillboardSize = UDim2.new(0, 150, 0, 75),
+        TextSize = 22,
+        Priority = 3
+    },
+    
+    -- Volcanic rocks
+    ["Lava Rock"] = {
+        Name = "Lava Rock",
+        Color = Color3.fromRGB(255, 69, 0),
+        SizeOffset = Vector3.new(0, 4, 0),
+        BillboardSize = UDim2.new(0, 130, 0, 65),
+        TextSize = 20,
+        Priority = 6
+    },
+    ["Volcanic Rock"] = {
+        Name = "Volcanic Rock",
+        Color = Color3.fromRGB(178, 34, 34),
+        SizeOffset = Vector3.new(0, 4, 0),
+        BillboardSize = UDim2.new(0, 140, 0, 70),
+        TextSize = 21,
+        Priority = 5
+    },
+    
+    -- Special rocks
+    ["Lucky Block"] = {
+        Name = "Lucky Block",
+        Color = Color3.fromRGB(255, 215, 0),
+        SizeOffset = Vector3.new(0, 6, 0),
+        BillboardSize = UDim2.new(0, 160, 0, 80),
+        TextSize = 24,
+        Priority = 1  -- Highest priority
+    }
+}
+
+-- Mob configurations (HANYA MOB - TIDAK PLAYER)
+local MobConfigs = {
+    ["Blight Pyromancer"] = {
+        Name = "Blight Pyromancer",
+        Color = Color3.fromRGB(255, 69, 0),
+        SizeOffset = Vector3.new(0, 6, 0),
+        BillboardSize = UDim2.new(0, 180, 0, 90),
+        TextSize = 22,
+        Priority = 1,
+        HealthBar = true,
+        IsMob = true
+    },
+    ["Reaper"] = {
+        Name = "Reaper",
+        Color = Color3.fromRGB(0, 0, 0),
+        SizeOffset = Vector3.new(0, 7, 0),
+        BillboardSize = UDim2.new(0, 200, 0, 100),
+        TextSize = 24,
+        Priority = 2,
+        HealthBar = true,
+        IsMob = true
+    },
+    ["Elite Deathaxe Skeleton"] = {
+        Name = "Elite Deathaxe Skeleton",
+        Color = Color3.fromRGB(220, 20, 60),
+        SizeOffset = Vector3.new(0, 5, 0),
+        BillboardSize = UDim2.new(0, 170, 0, 85),
+        TextSize = 21,
+        Priority = 3,
+        HealthBar = true,
+        IsMob = true
+    },
+    ["Elite Rogue Skeleton"] = {
+        Name = "Elite Rogue Skeleton",
+        Color = Color3.fromRGB(0, 191, 255),
+        SizeOffset = Vector3.new(0, 5, 0),
+        BillboardSize = UDim2.new(0, 170, 0, 85),
+        TextSize = 21,
+        Priority = 4,
+        HealthBar = true,
+        IsMob = true
+    },
+    ["Deathaxe Skeleton"] = {
+        Name = "Deathaxe Skeleton",
+        Color = Color3.fromRGB(178, 34, 34),
+        SizeOffset = Vector3.new(0, 4, 0),
+        BillboardSize = UDim2.new(0, 160, 0, 80),
+        TextSize = 20,
+        Priority = 5,
+        HealthBar = true,
+        IsMob = true
+    },
+    ["Axe Skeleton"] = {
+        Name = "Axe Skeleton",
+        Color = Color3.fromRGB(128, 128, 128),
+        SizeOffset = Vector3.new(0, 4, 0),
+        BillboardSize = UDim2.new(0, 150, 0, 75),
+        TextSize = 19,
+        Priority = 6,
+        HealthBar = true,
+        IsMob = true
+    },
+    ["Skeleton Rogue"] = {
+        Name = "Skeleton Rogue",
+        Color = Color3.fromRGB(105, 105, 105),
+        SizeOffset = Vector3.new(0, 4, 0),
+        BillboardSize = UDim2.new(0, 150, 0, 75),
+        TextSize = 19,
+        Priority = 7,
+        HealthBar = true,
+        IsMob = true
+    },
+    ["Brute Zombie"] = {
+        Name = "Brute Zombie",
+        Color = Color3.fromRGB(0, 100, 0),
+        SizeOffset = Vector3.new(0, 5, 0),
+        BillboardSize = UDim2.new(0, 160, 0, 80),
+        TextSize = 20,
+        Priority = 8,
+        HealthBar = true,
+        IsMob = true
+    },
+    ["Elite Zombie"] = {
+        Name = "Elite Zombie",
+        Color = Color3.fromRGB(50, 205, 50),
+        SizeOffset = Vector3.new(0, 5, 0),
+        BillboardSize = UDim2.new(0, 160, 0, 80),
+        TextSize = 20,
+        Priority = 9,
+        HealthBar = true,
+        IsMob = true
+    },
+    ["Delver Zombie"] = {
+        Name = "Delver Zombie",
+        Color = Color3.fromRGB(85, 107, 47),
+        SizeOffset = Vector3.new(0, 4, 0),
+        BillboardSize = UDim2.new(0, 150, 0, 75),
+        TextSize = 19,
+        Priority = 10,
+        HealthBar = true,
+        IsMob = true
+    },
+    ["Miner Zombie"] = {
+        Name = "Miner Zombie",
+        Color = Color3.fromRGB(139, 69, 19),
+        SizeOffset = Vector3.new(0, 4, 0),
+        BillboardSize = UDim2.new(0, 150, 0, 75),
+        TextSize = 19,
+        Priority = 11,
+        HealthBar = true,
+        IsMob = true
+    },
+    ["Zombie3"] = {
+        Name = "Zombie3",
+        Color = Color3.fromRGB(107, 142, 35),
+        SizeOffset = Vector3.new(0, 4, 0),
+        BillboardSize = UDim2.new(0, 140, 0, 70),
+        TextSize = 18,
+        Priority = 12,
+        HealthBar = true,
+        IsMob = true
+    },
+    ["Zombie"] = {
+        Name = "Zombie",
+        Color = Color3.fromRGB(34, 139, 34),
+        SizeOffset = Vector3.new(0, 4, 0),
+        BillboardSize = UDim2.new(0, 140, 0, 70),
+        TextSize = 18,
+        Priority = 13,
+        HealthBar = true,
+        IsMob = true
+    },
+    ["Bomber"] = {
+        Name = "Bomber",
+        Color = Color3.fromRGB(255, 0, 0),
+        SizeOffset = Vector3.new(0, 5, 0),
+        BillboardSize = UDim2.new(0, 160, 0, 80),
+        TextSize = 20,
+        Priority = 14,
+        HealthBar = true,
+        IsMob = true
+    },
+    ["Blazing Slime"] = {
+        Name = "Blazing Slime",
+        Color = Color3.fromRGB(255, 140, 0),
+        SizeOffset = Vector3.new(0, 3, 0),
+        BillboardSize = UDim2.new(0, 140, 0, 70),
+        TextSize = 18,
+        Priority = 15,
+        HealthBar = true,
+        IsMob = true
+    },
+    ["Slime"] = {
+        Name = "Slime",
+        Color = Color3.fromRGB(0, 255, 0),
+        SizeOffset = Vector3.new(0, 3, 0),
+        BillboardSize = UDim2.new(0, 130, 0, 65),
+        TextSize = 17,
+        Priority = 16,
+        HealthBar = true,
+        IsMob = true
+    }
+}
+
+-- GUI STATE
+local guiVisible = true
+local toggleKeybind = "RightControl"
+local WindUI, MainWindow
+local MobileToggleButton -- Tombol untuk mobile
+
+-- FLAGS STATE
+local flags = {
+    AutoHammerEnabled = true,
+    SkipMeltEnabled = true,
+    SkipPourEnabled = true,
+    AutoInitialize = true,
+    AutoAttackEnabled = true,
+    AttackWhileMining = true
+}
+
+-- SETTINGS STATE
+local settings = {
+    FlySpeed = 150,
+    RotationSpeed = 100,
+    SmoothTween = true,
+    AutoCollect = true,
+    ShowDistance = true,
+    ShowHealth = true,
+    AutoHeal = false,
+    HealThreshold = 30
+}
+
+----------------------------------------------------------------
+-- LOAD WINDUI LIBRARY - FIXED VERSION
+----------------------------------------------------------------
+local function loadUILibrary()
+    local success, lib = pcall(function()
+        -- Coba load dari raw.githubusercontent.com
+        local url = "https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"
+        local response = game:HttpGet(url, true)
+        return loadstring(response)()
+    end)
+    
+    if success then
+        WindUI = lib
+        print("[WINDUI] Library loaded successfully")
+        return true
+    else
+        warn("[WINDUI] Failed to load WindUI Library")
+        return false
+    end
+end
+
+----------------------------------------------------------------
+-- INITIALIZE REMOTES
+----------------------------------------------------------------
+local function initializeRemotes()
+    local Packages = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Packages")
+    local success, result = pcall(function()
+        Knit = require(Packages.Knit)
+    end)
+    
+    if not success then
+        print("[SYSTEM] Knit not found, trying alternative")
+        -- Coba cara lain untuk menemukan remotes
+        for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
+            if remote.Name == "ChangeSequence" and remote:IsA("RemoteFunction") then
+                ForgeServiceRF = remote
+            elseif remote.Name == "ToolActivated" and remote:IsA("RemoteFunction") then
+                ToolServiceRF = remote
+            end
         end
-        if services.ForgeService then
-            ForgeServiceRF = services.ForgeService.RF.ChangeSequence
+        return ForgeServiceRF ~= nil and ToolServiceRF ~= nil
+    end
+    
+    local Services = Packages.Knit.Services
+    if Services then
+        local ForgeService = Services:FindFirstChild("ForgeService")
+        local ToolService = Services:FindFirstChild("ToolService")
+        
+        if ForgeService then
+            ForgeServiceRF = ForgeService.RF.ChangeSequence
+        end
+        if ToolService then
+            ToolServiceRF = ToolService.RF.ToolActivated
+        end
+    end
+    
+    return ForgeServiceRF ~= nil and ToolServiceRF ~= nil
+end
+
+-- [Bagian kode yang sama untuk Forge Skipper, ESP System, Auto Attack System, dan Auto Mine System...]
+-- Tetap sama seperti sebelumnya, tidak ada perubahan
+
+----------------------------------------------------------------
+-- ==================== MOBILE GUI TOGGLE ====================
+----------------------------------------------------------------
+
+local function createMobileToggleButton()
+    -- Cek jika sudah ada tombol mobile
+    if MobileToggleButton then
+        MobileToggleButton:Destroy()
+    end
+    
+    -- Buat ScreenGui untuk mobile
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "JawirScriptMobileGUI"
+    ScreenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+    
+    -- Buat tombol floating
+    local ToggleButton = Instance.new("TextButton")
+    ToggleButton.Name = "MobileToggleButton"
+    ToggleButton.Size = UDim2.new(0, 60, 0, 60)
+    ToggleButton.Position = UDim2.new(1, -70, 0.5, -30) -- Pojok kanan tengah
+    ToggleButton.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
+    ToggleButton.BackgroundTransparency = 0.3
+    ToggleButton.BorderSizePixel = 0
+    ToggleButton.Text = "📱\nGUI"
+    ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ToggleButton.TextScaled = true
+    ToggleButton.Font = Enum.Font.SourceSansBold
+    ToggleButton.ZIndex = 100
+    ToggleButton.Parent = ScreenGui
+    
+    -- Buat corner radius
+    local UICorner = Instance.new("UICorner")
+    UICorner.CornerRadius = UDim.new(0.5, 0)
+    UICorner.Parent = ToggleButton
+    
+    -- Buat glow effect
+    local UIStroke = Instance.new("UIStroke")
+    UIStroke.Color = Color3.fromRGB(255, 255, 255)
+    UIStroke.Thickness = 2
+    UIStroke.Parent = ToggleButton
+    
+    -- Buat tombol draggable
+    local dragging = false
+    local dragInput, dragStart, startPos
+    
+    ToggleButton.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = ToggleButton.Position
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    
+    ToggleButton.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement then
+            dragInput = input
+        end
+    end)
+    
+    game:GetService("UserInputService").InputChanged:Connect(function(input)
+        if dragging and (input == dragInput) then
+            local delta = input.Position - dragStart
+            ToggleButton.Position = UDim2.new(
+                startPos.X.Scale, 
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale, 
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+    
+    -- Fungsi toggle GUI saat tombol ditekan
+    ToggleButton.MouseButton1Click:Connect(function()
+        toggleGUI()
+    end)
+    
+    -- Tambahkan animasi hover
+    ToggleButton.MouseEnter:Connect(function()
+        game:GetService("TweenService"):Create(
+            ToggleButton,
+            TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            {BackgroundTransparency = 0.1}
+        ):Play()
+    end)
+    
+    ToggleButton.MouseLeave:Connect(function()
+        game:GetService("TweenService"):Create(
+            ToggleButton,
+            TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            {BackgroundTransparency = 0.3}
+        ):Play()
+    end)
+    
+    MobileToggleButton = ToggleButton
+    print("[MOBILE] Mobile toggle button created")
+    
+    return ToggleButton
+end
+
+----------------------------------------------------------------
+-- ====================== WINDUI GUI ========================
+----------------------------------------------------------------
+
+local function toggleGUI()
+    if not MainWindow then 
+        print("[GUI] MainWindow not created yet")
+        return 
+    end
+    
+    if guiVisible then
+        MainWindow:Close()
+        if MainWindow.OpenButtonMain then
+            MainWindow.OpenButtonMain:Visible(true)
+        end
+        guiVisible = false
+        print("[GUI] GUI hidden")
+        
+        -- Update tombol mobile jika ada
+        if MobileToggleButton then
+            MobileToggleButton.Text = "📱\nGUI"
+            MobileToggleButton.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
+        end
+    else
+        MainWindow:Open()
+        if MainWindow.OpenButtonMain then
+            MainWindow.OpenButtonMain:Visible(false)
+        end
+        guiVisible = true
+        print("[GUI] GUI shown")
+        
+        -- Update tombol mobile jika ada
+        if MobileToggleButton then
+            MobileToggleButton.Text = "📱\nOPEN"
+            MobileToggleButton.BackgroundColor3 = Color3.fromRGB(0, 200, 83)
         end
     end
 end
 
----------------- NOCLIP ----------------
-local function noclip(state)
-    local char = LocalPlayer.Character
-    if not char then return end
-    for _,v in pairs(char:GetDescendants()) do
-        if v:IsA("BasePart") then
-            v.CanCollide = not state
+local function createMainWindow()
+    -- Simple fallback GUI jika WindUI gagal
+    local function createFallbackGUI()
+        print("[GUI] Creating fallback GUI...")
+        
+        local ScreenGui = Instance.new("ScreenGui")
+        ScreenGui.Name = "JawirScriptFallbackGUI"
+        ScreenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+        
+        local MainFrame = Instance.new("Frame")
+        MainFrame.Size = UDim2.new(0, 350, 0, 450)
+        MainFrame.Position = UDim2.new(0.5, -175, 0.5, -225)
+        MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+        MainFrame.BorderSizePixel = 0
+        MainFrame.Active = true
+        MainFrame.Draggable = true
+        MainFrame.Visible = guiVisible
+        MainFrame.Parent = ScreenGui
+        
+        -- Buat corner
+        local UICorner = Instance.new("UICorner")
+        UICorner.CornerRadius = UDim.new(0, 8)
+        UICorner.Parent = MainFrame
+        
+        local Title = Instance.new("TextLabel")
+        Title.Size = UDim2.new(1, 0, 0, 40)
+        Title.Position = UDim2.new(0, 0, 0, 0)
+        Title.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+        Title.Text = "JawirScript - Mobile GUI"
+        Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+        Title.Font = Enum.Font.SourceSansBold
+        Title.TextSize = 18
+        Title.Parent = MainFrame
+        
+        local CloseButton = Instance.new("TextButton")
+        CloseButton.Size = UDim2.new(0, 30, 0, 30)
+        CloseButton.Position = UDim2.new(1, -35, 0, 5)
+        CloseButton.Text = "X"
+        CloseButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+        CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        CloseButton.Font = Enum.Font.SourceSansBold
+        CloseButton.TextSize = 18
+        CloseButton.Parent = MainFrame
+        CloseButton.MouseButton1Click:Connect(function()
+            MainFrame.Visible = not MainFrame.Visible
+            guiVisible = MainFrame.Visible
+            
+            -- Update tombol mobile
+            if MobileToggleButton then
+                if guiVisible then
+                    MobileToggleButton.Text = "📱\nOPEN"
+                    MobileToggleButton.BackgroundColor3 = Color3.fromRGB(0, 200, 83)
+                else
+                    MobileToggleButton.Text = "📱\nGUI"
+                    MobileToggleButton.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
+                end
+            end
+        end)
+        
+        local ScrollFrame = Instance.new("ScrollingFrame")
+        ScrollFrame.Size = UDim2.new(1, -10, 1, -50)
+        ScrollFrame.Position = UDim2.new(0, 5, 0, 45)
+        ScrollFrame.BackgroundTransparency = 1
+        ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 600)
+        ScrollFrame.ScrollBarThickness = 8
+        ScrollFrame.Parent = MainFrame
+        
+        local UIListLayout = Instance.new("UIListLayout")
+        UIListLayout.Padding = UDim.new(0, 8)
+        UIListLayout.Parent = ScrollFrame
+        
+        -- Tambahkan tombol-tombol utama dengan ukuran lebih besar untuk mobile
+        local buttons = {
+            {"⛏️ Auto Mine", toggleAutoMine},
+            {"⚔️ Auto Attack", toggleAutoAttack},
+            {"🗿 Rock ESP", toggleRockESP},
+            {"👹 Mob ESP", toggleMobESP},
+            {"🎯 Mine Nearest", forceMineNearest},
+            {"🎯 Attack Nearest", forceAttackNearest},
+            {"👻 Noclip", toggleNoclip},
+            {"🧹 Clean ESP", cleanupESP},
+            {"🛑 Stop All", function()
+                stopAutoHammer()
+                AutoMineEnabled = false
+                flags.AutoAttackEnabled = false
+                IsMining = false
+                IsAttacking = false
+                disableNoclip()
+            end}
+        }
+        
+        for i, buttonData in ipairs(buttons) do
+            local button = Instance.new("TextButton")
+            button.Size = UDim2.new(1, -10, 0, 50) -- Lebih besar untuk mobile
+            button.Text = buttonData[1]
+            button.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+            button.TextColor3 = Color3.fromRGB(255, 255, 255)
+            button.Font = Enum.Font.SourceSansSemibold
+            button.TextSize = 16
+            button.Parent = ScrollFrame
+            
+            -- Buat corner untuk tombol
+            local buttonCorner = Instance.new("UICorner")
+            buttonCorner.CornerRadius = UDim.new(0, 6)
+            buttonCorner.Parent = button
+            
+            -- Tambahkan efek hover
+            button.MouseEnter:Connect(function()
+                game:GetService("TweenService"):Create(
+                    button,
+                    TweenInfo.new(0.2),
+                    {BackgroundColor3 = Color3.fromRGB(80, 80, 90)}
+                ):Play()
+            end)
+            
+            button.MouseLeave:Connect(function()
+                game:GetService("TweenService"):Create(
+                    button,
+                    TweenInfo.new(0.2),
+                    {BackgroundColor3 = Color3.fromRGB(60, 60, 70)}
+                ):Play()
+            end)
+            
+            button.MouseButton1Click:Connect(function()
+                buttonData[2]()
+                
+                -- Animasi klik
+                game:GetService("TweenService"):Create(
+                    button,
+                    TweenInfo.new(0.1),
+                    {BackgroundColor3 = Color3.fromRGB(100, 100, 110)}
+                ):Play()
+                wait(0.1)
+                game:GetService("TweenService"):Create(
+                    button,
+                    TweenInfo.new(0.1),
+                    {BackgroundColor3 = Color3.fromRGB(60, 60, 70)}
+                ):Play()
+            end)
         end
+        
+        print("[GUI] Fallback Mobile GUI created successfully")
+        
+        return {
+            Open = function() 
+                MainFrame.Visible = true 
+                guiVisible = true
+            end,
+            Close = function() 
+                MainFrame.Visible = false 
+                guiVisible = false
+            end,
+            OpenButtonMain = {
+                Visible = function(visible)
+                    -- Do nothing for fallback
+                end
+            }
+        }
     end
+    
+    -- Coba load WindUI
+    if not loadUILibrary() then
+        print("[GUI] WindUI failed to load, using fallback GUI")
+        MainWindow = createFallbackGUI()
+        return MainWindow
+    end
+    
+    print("[GUI] Creating WindUI Window...")
+    
+    local success, window = pcall(function()
+        return WindUI:CreateWindow({
+            Title = "JawirScript - Mobile",
+            Folder = "JawirScriptMobileSystem",
+            Theme = "Dark",
+            Size = UDim2.new(0, 400, 0, 500), -- Lebih kecil untuk mobile
+            Radius = 12,
+            Resizable = true,
+            Acrylic = true,
+            Background = Color3.fromRGB(30, 30, 35),
+            Author = "Mobile Compatible - Tap 📱 button",
+            ToggleKey = Enum.KeyCode.RightControl,
+            OpenButton = {
+                Title = "📱 Jawir",
+                Icon = "smartphone",
+                Enabled = true,
+                Position = UDim2.new(0.5, -60, 0, 20),
+                OnlyIcon = false,
+                Draggable = true,
+                Color = ColorSequence.new(
+                    Color3.fromHex("#2196F3"),
+                    Color3.fromHex("#4CAF50")
+                )
+            }
+        })
+    end)
+    
+    if not success then
+        print("[GUI] Failed to create WindUI window, using fallback: " .. tostring(window))
+        MainWindow = createFallbackGUI()
+        return MainWindow
+    end
+    
+    MainWindow = window
+    print("[GUI] WindUI Mobile Window created successfully")
+    
+    -- EDIT OPEN BUTTON (Permintaan dari pengguna)
+    pcall(function()
+        MainWindow:EditOpenButton({
+            Title = "Open JawirScript UI",
+            Icon = "smartphone",
+            CornerRadius = UDim.new(0,16),
+            StrokeThickness = 2,
+            Color = ColorSequence.new( -- gradient
+                Color3.fromHex("FF0F7B"), 
+                Color3.fromHex("F89B29")
+            ),
+            OnlyMobile = false,
+            Enabled = true,
+            Draggable = true,
+        })
+    end)
+    
+    -- Buat tabs sederhana untuk mobile
+    pcall(function()
+        -- Tab 1: Main Controls
+        local MainTab = MainWindow:Tab({
+            Title = "📱 Main",
+            Desc = "Main Controls"
+        })
+        
+        MainTab:Toggle({
+            Title = "⛏️ Auto Mine",
+            Desc = "Toggle auto mining",
+            Value = AutoMineEnabled,
+            Callback = function(value)
+                AutoMineEnabled = toggleAutoMine()
+            end
+        })
+        
+        MainTab:Toggle({
+            Title = "⚔️ Auto Attack",
+            Desc = "Toggle auto attack",
+            Value = flags.AutoAttackEnabled,
+            Callback = function(value)
+                flags.AutoAttackEnabled = toggleAutoAttack()
+            end
+        })
+        
+        MainTab:Toggle({
+            Title = "👻 Noclip",
+            Desc = "Toggle noclip",
+            Value = NOCLIP_ENABLED,
+            Callback = function(value)
+                NOCLIP_ENABLED = toggleNoclip()
+            end
+        })
+        
+        MainTab:Toggle({
+            Title = "🎯 Attack While Mining",
+            Desc = "Attack mobs while mining",
+            Value = flags.AttackWhileMining,
+            Callback = function(value)
+                flags.AttackWhileMining = value
+            end
+        })
+        
+        MainTab:Divider()
+        
+        MainTab:Button({
+            Title = "🎯 Mine Now",
+            Desc = "Mine nearest rock",
+            Callback = function()
+                forceMineNearest()
+            end
+        })
+        
+        MainTab:Button({
+            Title = "🎯 Attack Now",
+            Desc = "Attack nearest mob",
+            Callback = function()
+                forceAttackNearest()
+            end
+        })
+        
+        MainTab:Button({
+            Title = "🛑 Stop All",
+            Desc = "Stop all systems",
+            Callback = function()
+                stopAutoHammer()
+                AutoMineEnabled = false
+                flags.AutoAttackEnabled = false
+                IsMining = false
+                IsAttacking = false
+                disableNoclip()
+            end
+        })
+        
+        -- Tab 2: ESP Settings
+        local ESPTab = MainWindow:Tab({
+            Title = "👁️ ESP",
+            Desc = "ESP Settings"
+        })
+        
+        ESPTab:Toggle({
+            Title = "🗿 Rock ESP",
+            Desc = "Toggle rock ESP",
+            Value = ESPEnabled,
+            Callback = function(value)
+                ESPEnabled = toggleRockESP()
+            end
+        })
+        
+        ESPTab:Toggle({
+            Title = "👹 Mob ESP",
+            Desc = "Toggle mob ESP",
+            Value = MobESPEnabled,
+            Callback = function(value)
+                MobESPEnabled = toggleMobESP()
+            end
+        })
+        
+        -- Dropdown untuk pilih rock type
+        local rockTypes = {"Any"}
+        for rockName, _ in pairs(RockConfigs) do
+            table.insert(rockTypes, rockName)
+        end
+        table.sort(rockTypes)
+        
+        ESPTab:Dropdown({
+            Title = "Select Rock Type",
+            Desc = "Filter rock ESP by type",
+            List = rockTypes,
+            Current = SelectedRockType,
+            Callback = function(value)
+                SelectedRockType = value
+                print("[ESP] Rock type filter set to: " .. value)
+            end
+        })
+        
+        -- Dropdown untuk pilih mob type
+        local mobTypes = {"Any"}
+        for mobName, config in pairs(MobConfigs) do
+            if config.IsMob then
+                table.insert(mobTypes, mobName)
+            end
+        end
+        table.sort(mobTypes)
+        
+        ESPTab:Dropdown({
+            Title = "Select Mob Type",
+            Desc = "Filter mob ESP by type",
+            List = mobTypes,
+            Current = SelectedMobType,
+            Callback = function(value)
+                SelectedMobType = value
+                print("[ESP] Mob type filter set to: " .. value)
+            end
+        })
+        
+        ESPTab:Slider({
+            Title = "Rock ESP Distance",
+            Desc = "Set rock ESP render distance",
+            Min = 10,
+            Max = 2000,
+            Default = ESPDistance,
+            Callback = function(value)
+                setESPDistance(value)
+            end
+        })
+        
+        ESPTab:Slider({
+            Title = "Mob ESP Distance",
+            Desc = "Set mob ESP render distance",
+            Min = 10,
+            Max = 1000,
+            Default = MobESPDistance,
+            Callback = function(value)
+                setMobESPDistance(value)
+            end
+        })
+        
+        ESPTab:Button({
+            Title = "🧹 Clean ESP",
+            Desc = "Remove all ESP",
+            Callback = function()
+                cleanupESP()
+            end
+        })
+        
+        -- Tab 3: Forge
+        local ForgeTab = MainWindow:Tab({
+            Title = "⚒️ Forge",
+            Desc = "Forge Settings"
+        })
+        
+        ForgeTab:Button({
+            Title = "🔧 Activate Hooks",
+            Desc = "Activate forge hooks",
+            Callback = function()
+                hookMinigameModules()
+            end
+        })
+        
+        ForgeTab:Toggle({
+            Title = "🔨 Auto Hammer",
+            Desc = "Auto hammer minigame",
+            Value = flags.AutoHammerEnabled,
+            Callback = function(value)
+                flags.AutoHammerEnabled = value
+            end
+        })
+        
+        ForgeTab:Toggle({
+            Title = "🔥 Skip Melt",
+            Desc = "Skip melt minigame",
+            Value = flags.SkipMeltEnabled,
+            Callback = function(value)
+                flags.SkipMeltEnabled = value
+            end
+        })
+        
+        ForgeTab:Toggle({
+            Title = "💧 Skip Pour",
+            Desc = "Skip pour minigame",
+            Value = flags.SkipPourEnabled,
+            Callback = function(value)
+                flags.SkipPourEnabled = value
+            end
+        })
+        
+        ForgeTab:Slider({
+            Title = "Hammer Cooldown",
+            Desc = "Set hammer delay",
+            Min = 0.1,
+            Max = 2.0,
+            Default = HAMMER_COOLDOWN,
+            Callback = function(value)
+                HAMMER_COOLDOWN = math.max(0.1, value)
+                print("[FORGE] Hammer cooldown set to: " .. string.format("%.2f", HAMMER_COOLDOWN) .. "s")
+            end
+        })
+        
+        -- Tab 4: Settings (TAB BARU)
+        local SettingsTab = MainWindow:Tab({
+            Title = "⚙️ Settings",
+            Desc = "Advanced Settings"
+        })
+        
+        SettingsTab:Slider({
+            Title = "Fly Speed",
+            Desc = "Movement speed",
+            Min = 10,
+            Max = 500,
+            Default = settings.FlySpeed,
+            Callback = function(value)
+                settings.FlySpeed = value
+                MINING_SPEED = value
+                ATTACK_SPEED = value
+                print("[SETTINGS] Fly speed set to: " .. value .. " studs/sec")
+            end
+        })
+        
+        SettingsTab:Slider({
+            Title = "Rotation Speed",
+            Desc = "Character rotation speed",
+            Min = 50,
+            Max = 500,
+            Default = settings.RotationSpeed,
+            Callback = function(value)
+                settings.RotationSpeed = value
+                print("[SETTINGS] Rotation speed set to: " .. value)
+            end
+        })
+        
+        SettingsTab:Slider({
+            Title = "Fly Height",
+            Desc = "Height when flying to targets",
+            Min = 0,
+            Max = 100,
+            Default = FLY_HEIGHT,
+            Callback = function(value)
+                FLY_HEIGHT = value
+                print("[SETTINGS] Fly height set to: " .. value .. " studs")
+            end
+        })
+        
+        SettingsTab:Slider({
+            Title = "Mine Cooldown",
+            Desc = "Delay between mining cycles",
+            Min = 0.1,
+            Max = 5.0,
+            Default = MINING_COOLDOWN,
+            Callback = function(value)
+                MINING_COOLDOWN = value
+                print("[SETTINGS] Mine cooldown set to: " .. string.format("%.2f", value) .. "s")
+            end
+        })
+        
+        SettingsTab:Slider({
+            Title = "Attack Cooldown",
+            Desc = "Delay between attack cycles",
+            Min = 0.1,
+            Max = 5.0,
+            Default = ATTACK_COOLDOWN,
+            Callback = function(value)
+                ATTACK_COOLDOWN = value
+                print("[SETTINGS] Attack cooldown set to: " .. string.format("%.2f", value) .. "s")
+            end
+        })
+        
+        SettingsTab:Slider({
+            Title = "Mine Search Radius",
+            Desc = "Mining target search radius",
+            Min = 10,
+            Max = 5000,
+            Default = MINING_SEARCH_RADIUS,
+            Callback = function(value)
+                MINING_SEARCH_RADIUS = value
+                print("[SETTINGS] Mine search radius set to: " .. value .. " studs")
+            end
+        })
+        
+        SettingsTab:Slider({
+            Title = "Attack Search Radius",
+            Desc = "Attack target search radius",
+            Min = 10,
+            Max = 1000,
+            Default = ATTACK_SEARCH_RADIUS,
+            Callback = function(value)
+                ATTACK_SEARCH_RADIUS = value
+                print("[SETTINGS] Attack search radius set to: " .. value .. " studs")
+            end
+        })
+        
+        SettingsTab:Divider()
+        
+        SettingsTab:Toggle({
+            Title = "Smooth Tween",
+            Desc = "Enable smooth movement",
+            Value = settings.SmoothTween,
+            Callback = function(value)
+                settings.SmoothTween = value
+                print("[SETTINGS] Smooth tween: " .. (value and "ENABLED" or "DISABLED"))
+            end
+        })
+        
+        SettingsTab:Toggle({
+            Title = "Auto Collect",
+            Desc = "Auto collect drops",
+            Value = settings.AutoCollect,
+            Callback = function(value)
+                settings.AutoCollect = value
+                print("[SETTINGS] Auto collect: " .. (value and "ENABLED" or "DISABLED"))
+            end
+        })
+        
+        SettingsTab:Toggle({
+            Title = "Show Distance",
+            Desc = "Show distance in ESP",
+            Value = settings.ShowDistance,
+            Callback = function(value)
+                settings.ShowDistance = value
+                print("[SETTINGS] Show distance: " .. (value and "ENABLED" or "DISABLED"))
+                
+                -- Update semua ESP untuk toggle distance label
+                for obj, espData in pairs(highlightedObjects) do
+                    if espData.Billboard and espData.Billboard:FindFirstChild("DistanceLabel") then
+                        espData.Billboard.DistanceLabel.Visible = value
+                    end
+                end
+                
+                for obj, espData in pairs(highlightedMobs) do
+                    if espData.Billboard and espData.Billboard:FindFirstChild("DistanceLabel") then
+                        espData.Billboard.DistanceLabel.Visible = value
+                    end
+                end
+            end
+        })
+        
+        SettingsTab:Toggle({
+            Title = "Show Health",
+            Desc = "Show health bars",
+            Value = settings.ShowHealth,
+            Callback = function(value)
+                settings.ShowHealth = value
+                print("[SETTINGS] Show health: " .. (value and "ENABLED" or "DISABLED"))
+                
+                -- Update mob ESP untuk toggle health bars
+                for obj, espData in pairs(highlightedMobs) do
+                    if espData.HealthBar and espData.HealthBar.Parent then
+                        espData.HealthBar.Parent.Visible = value
+                    end
+                    if espData.HealthText then
+                        espData.HealthText.Visible = value
+                    end
+                end
+            end
+        })
+        
+        SettingsTab:Toggle({
+            Title = "Auto Heal",
+            Desc = "Auto heal when low HP",
+            Value = settings.AutoHeal,
+            Callback = function(value)
+                settings.AutoHeal = value
+                print("[SETTINGS] Auto heal: " .. (value and "ENABLED" or "DISABLED"))
+            end
+        })
+        
+        SettingsTab:Slider({
+            Title = "Heal Threshold",
+            Desc = "HP percentage to auto heal",
+            Min = 10,
+            Max = 90,
+            Default = settings.HealThreshold,
+            Callback = function(value)
+                settings.HealThreshold = value
+                print("[SETTINGS] Heal threshold set to: " .. value .. "%")
+            end
+        })
+        
+        SettingsTab:Divider()
+        
+        SettingsTab:Button({
+            Title = "🔧 Apply Settings",
+            Desc = "Apply all settings",
+            Callback = function()
+                print("[SETTINGS] Applying all settings...")
+                -- Reset semua sistem dengan setting baru
+                if MineConnection then
+                    MineConnection:Disconnect()
+                    MineConnection = nil
+                end
+                
+                if AttackConnection then
+                    AttackConnection:Disconnect()
+                    AttackConnection = nil
+                end
+                
+                if AutoMineEnabled then
+                    startAutoMineLoop()
+                end
+                
+                if flags.AutoAttackEnabled then
+                    startAutoAttackLoop()
+                end
+                
+                print("[SETTINGS] All settings applied!")
+            end
+        })
+        
+        SettingsTab:Button({
+            Title = "🔄 Reset Settings",
+            Desc = "Reset to defaults",
+            Callback = function()
+                print("[SETTINGS] Resetting to default settings...")
+                
+                -- Reset settings
+                settings = {
+                    FlySpeed = 150,
+                    RotationSpeed = 100,
+                    SmoothTween = true,
+                    AutoCollect = true,
+                    ShowDistance = true,
+                    ShowHealth = true,
+                    AutoHeal = false,
+                    HealThreshold = 30
+                }
+                
+                -- Reset system settings
+                MINING_SPEED = 150
+                ATTACK_SPEED = 150
+                MINING_COOLDOWN = 0.5
+                ATTACK_COOLDOWN = 1.0
+                MINING_SEARCH_RADIUS = 1000
+                ATTACK_SEARCH_RADIUS = 300
+                FLY_HEIGHT = 15
+                HAMMER_COOLDOWN = 0.5
+                MINE_DELAY = 0.5
+                ATTACK_DELAY = 0.3
+                ESPDistance = 500
+                MobESPDistance = 300
+                
+                SelectedRockType = "Any"
+                SelectedMobType = "Any"
+                
+                print("[SETTINGS] Settings reset to defaults!")
+            end
+        })
+        
+        print("[GUI] Mobile tabs created successfully")
+    end)
+    
+    return MainWindow
 end
 
----------------- FIND NEAREST ----------------
-local function nearestFromFolder(folder, radius)
-    local char = LocalPlayer.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
+----------------------------------------------------------------
+-- FUNGSI UNTUK AUTO HEAL
+----------------------------------------------------------------
 
-    local best, dist = nil, math.huge
-    for _,m in pairs(folder:GetChildren()) do
-        local p = m:FindFirstChild("HumanoidRootPart")
-            or m:FindFirstChildWhichIsA("BasePart")
-        if p then
-            local d = (p.Position - hrp.Position).Magnitude
-            if d < dist and d <= radius then
-                dist = d
-                best = p
+local function autoHealCheck()
+    if not settings.AutoHeal then return end
+    
+    local character = LocalPlayer.Character
+    if not character then return end
+    
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+    
+    local healthPercent = (humanoid.Health / humanoid.MaxHealth) * 100
+    
+    if healthPercent <= settings.HealThreshold then
+        print("[AUTO HEAL] Low health detected: " .. string.format("%.1f", healthPercent) .. "%")
+        
+        -- Cari healing items di inventory
+        local backpack = LocalPlayer:FindFirstChild("Backpack")
+        if backpack then
+            for _, item in pairs(backpack:GetChildren()) do
+                if item:IsA("Tool") then
+                    local itemName = item.Name:lower()
+                    if itemName:find("potion") or itemName:find("bandage") or itemName:find("heal") then
+                        print("[AUTO HEAL] Using healing item: " .. item.Name)
+                        
+                        -- Equip dan gunakan item
+                        humanoid:EquipTool(item)
+                        task.wait(0.5)
+                        
+                        -- Simulasikan klik mouse untuk menggunakan item
+                        if item:FindFirstChild("Handle") then
+                            local args = {item.Name}
+                            pcall(function()
+                                ToolServiceRF:InvokeServer(unpack(args))
+                            end)
+                        end
+                        
+                        task.wait(1)
+                        return true
+                    end
+                end
             end
         end
     end
-    return best
+    
+    return false
 end
 
----------------- MOVE ----------------
-local function moveTo(pos)
-    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-    noclip(true)
+----------------------------------------------------------------
+-- ===================== INITIALIZATION ======================
+----------------------------------------------------------------
 
-    local dist = (hrp.Position - pos).Magnitude
-    local tween = TweenService:Create(
-        hrp,
-        TweenInfo.new(math.max(0.4, dist/120)),
-        {CFrame = CFrame.new(pos)}
-    )
-    tween:Play()
-    tween.Completed:Wait()
-end
-
----------------- AUTO ATTACK ----------------
-local function startAutoAttack()
-    RunService.Heartbeat:Connect(function()
-        if not AutoAttackEnabled or IsAttacking then return end
-        local living = Workspace:FindFirstChild("Living")
-        if not living then return end
-
-        local mob = nearestFromFolder(living, ATTACK_RADIUS)
-        if mob then
-            IsAttacking = true
-            task.spawn(function()
-                moveTo(mob.Position + Vector3.new(0,5,0))
-                if ToolServiceRF then
-                    pcall(function()
-                        ToolServiceRF:InvokeServer("Weapon")
-                    end)
-                end
-                task.wait(0.5)
-                IsAttacking = false
-            end)
+local function setupEventListeners()
+    -- GUI keybind listener untuk PC
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if not gameProcessed then
+            if input.KeyCode == Enum.KeyCode[toggleKeybind] then
+                toggleGUI()
+            end
         end
     end)
-end
-
----------------- AUTO MINE ----------------
-local function startAutoMine()
-    RunService.Heartbeat:Connect(function()
-        if not AutoMineEnabled or IsMining or IsAttacking then return end
-        local rocks = Workspace:FindFirstChild("Rocks")
-        if not rocks then return end
-
-        local rock = nearestFromFolder(rocks, MINING_RADIUS)
-        if rock then
-            IsMining = true
-            task.spawn(function()
-                moveTo(rock.Position + Vector3.new(0, FLY_HEIGHT, 0))
-                if ToolServiceRF then
-                    pcall(function()
-                        ToolServiceRF:InvokeServer("Pickaxe")
-                    end)
-                end
-                task.wait(0.6)
-                IsMining = false
-            end)
+    
+    -- Character added listener for noclip
+    LocalPlayer.CharacterAdded:Connect(function(character)
+        task.wait(1)
+        if (AutoMineEnabled or IsAttacking) and NOCLIP_ENABLED then
+            enableNoclip()
         end
     end)
-end
-
----------------- AUTO HAMMER ----------------
-local function autoHammer()
-    if not AutoHammerEnabled or not ForgeServiceRF then return end
-    if IsHammering then return end
-    IsHammering = true
-
+    
+    -- Update player blacklist
+    for _, player in pairs(Players:GetPlayers()) do
+        PlayerBlacklist[player.Name] = true
+    end
+    
+    Players.PlayerAdded:Connect(function(player)
+        PlayerBlacklist[player.Name] = true
+    end)
+    
+    Players.PlayerRemoving:Connect(function(player)
+        PlayerBlacklist[player.Name] = nil
+    end)
+    
+    -- Auto heal check setiap 5 detik
     task.spawn(function()
-        while AutoHammerEnabled do
-            pcall(function()
-                ForgeServiceRF:InvokeServer("Hammer", {
-                    ClientTime = workspace:GetServerTimeNow()
-                })
-            end)
-            task.wait(0.45)
+        while true do
+            pcall(autoHealCheck)
+            task.wait(5)
         end
-        IsHammering = false
     end)
 end
 
----------------- GUI ----------------
-local function createUI()
-    local Window = WindUI:CreateWindow({
-        Title = "JawirScript",
-        Author = "Nvlix",
-        Icon = "zap",
-        Folder = "JawirScript",
-        Size = UDim2.fromOffset(600,480)
-    })
-
-    -- FLOATING OPEN BUTTON (SHOW / HIDE GUI)
-    Window:EditOpenButton({
-        Title = "Open Example UI",
-        Icon = "monitor",
-        CornerRadius = UDim.new(0,16),
-        StrokeThickness = 2,
-        Color = ColorSequence.new(
-            Color3.fromHex("FF0F7B"),
-            Color3.fromHex("F89B29")
-        ),
-        OnlyMobile = false,
-        Enabled = true,
-        Draggable = true,
-    })
-
-    -- MAIN
-    local Main = Window:Tab({Title="Main", Icon="home"})
-    Main:Toggle({Title="Auto Mine", Callback=function(v)
-        AutoMineEnabled = v
-        if v then startAutoMine() end
-    end})
-    Main:Toggle({Title="Auto Attack", Callback=function(v)
-        AutoAttackEnabled = v
-        if v then startAutoAttack() end
-    end})
-    Main:Toggle({Title="Auto Hammer", Default=true, Callback=function(v)
-        AutoHammerEnabled = v
-        if v then autoHammer() end
-    end})
-
-    -- ESP
-    local ESP = Window:Tab({Title="ESP", Icon="eye"})
-    ESP:Toggle({Title="Rock ESP", Default=true, Callback=function(v) ESP_Rock = v end})
-    ESP:Toggle({Title="Mob ESP", Default=true, Callback=function(v) ESP_Mob = v end})
-
-    WindUI:Notify({
-        Title = "JawirScript",
-        Content = "Loaded (Open Button = Show / Hide GUI)"
-    })
+local function startESPScanning()
+    -- Start auto ESP scanning
+    if ESPConnection then
+        task.cancel(ESPConnection)
+        ESPConnection = nil
+    end
+    
+    ESPConnection = task.spawn(function()
+        while true do
+            pcall(scanForRocks)
+            pcall(scanForMobs)
+            task.wait(3)
+        end
+    end)
+    print("[ESP] Auto scanning started")
 end
 
----------------- INIT ----------------
+local function initializeSystem()
+    print("========================================")
+    print("JAWIRSCRIPT AUTO FORGE & MINE SYSTEM")
+    print("========================================")
+    print("Features: Forge Skip + Auto Mine + Auto Attack")
+    print("ESP: Hanya deteksi MOB (TIDAK deteksi PLAYER)")
+    print("Mobile: Tap 📱 button to toggle GUI")
+    print("PC: Press RightControl to toggle GUI")
+    print("Settings: Added Fly Speed, Auto Heal, and more!")
+    print("========================================")
+    
+    -- Initialize player blacklist
+    for _, player in pairs(Players:GetPlayers()) do
+        PlayerBlacklist[player.Name] = true
+    end
+    
+    -- Initialize remotes
+    pcall(initializeRemotes)
+    
+    -- Create GUI
+    pcall(createMainWindow)
+    
+    -- Buat tombol mobile toggle
+    pcall(createMobileToggleButton)
+    
+    -- Setup event listeners
+    pcall(setupEventListeners)
+    
+    -- Start ESP scanning
+    pcall(startESPScanning)
+    
+    -- Auto activate hooks after delay
+    task.spawn(function()
+        task.wait(5)
+        pcall(hookMinigameModules)
+    end)
+    
+    -- Auto start attack system after delay
+    task.spawn(function()
+        task.wait(8)
+        if flags.AutoAttackEnabled then
+            pcall(startAutoAttackLoop)
+        end
+    end)
+    
+    -- Cleanup on player leave
+    Players.LocalPlayer.AncestryChanged:Connect(function()
+        if not Players.LocalPlayer.Parent then
+            pcall(stopAutoHammer)
+            pcall(cleanupESP)
+            pcall(disableNoclip)
+            
+            if MineConnection then
+                MineConnection:Disconnect()
+                MineConnection = nil
+            end
+            
+            if AttackConnection then
+                AttackConnection:Disconnect()
+                AttackConnection = nil
+            end
+            
+            if ESPConnection then
+                task.cancel(ESPConnection)
+                ESPConnection = nil
+            end
+            
+            -- Hapus tombol mobile
+            if MobileToggleButton then
+                MobileToggleButton:Destroy()
+                MobileToggleButton = nil
+            end
+        end
+    end)
+    
+    -- Cleanup on game close
+    game:BindToClose(function()
+        pcall(stopAutoHammer)
+        pcall(cleanupESP)
+        pcall(disableNoclip)
+        
+        -- Hapus tombol mobile
+        if MobileToggleButton then
+            MobileToggleButton:Destroy()
+            MobileToggleButton = nil
+        end
+    end)
+    
+    print("[SYSTEM] Initialization complete")
+    print("[SYSTEM] Mobile: Tap 📱 button to toggle GUI")
+    print("[SYSTEM] PC: Press " .. toggleKeybind .. " to toggle GUI")
+    print("[SYSTEM] Settings tab added with advanced options")
+    print("========================================")
+end
+
+-- Start initialization
 task.spawn(function()
-    task.wait(1)
-    pcall(initRemotes)
-    pcall(createUI)
+    task.wait(2)
+    print("[SYSTEM] Starting initialization...")
+    pcall(initializeSystem)
 end)
+
+return {
+    -- Forge System
+    ActivateHooks = hookMinigameModules,
+    StopHammer = stopAutoHammer,
+    StartHammer = startAutoHammer,
+    
+    -- Auto Mine System
+    ToggleAutoMine = toggleAutoMine,
+    ForceMine = forceMineNearest,
+    ToggleNoclip = toggleNoclip,
+    
+    -- Auto Attack System
+    ToggleAutoAttack = toggleAutoAttack,
+    ForceAttack = forceAttackNearest,
+    
+    -- ESP System
+    ToggleRockESP = toggleRockESP,
+    ToggleMobESP = toggleMobESP,
+    CleanupESP = cleanupESP,
+    
+    -- GUI
+    ToggleGUI = toggleGUI,
+    
+    -- Mobile
+    CreateMobileToggle = createMobileToggleButton,
+    
+    -- Settings
+    GetSettings = function() return settings end,
+    ApplySettings = function()
+        if AutoMineEnabled then
+            startAutoMineLoop()
+        end
+        if flags.AutoAttackEnabled then
+            startAutoAttackLoop()
+        end
+    end
+}
