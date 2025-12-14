@@ -1,8 +1,5 @@
 -- ============================================================
--- JAWIRSCRIPT AUTO FORGE SYSTEM
--- ============================================================
--- Gabungan sistem: Forge Skipper + Auto Mine System + Mob ESP & Auto Attack
--- TIDAK DETEKSI PLAYER - HANYA MOB
+-- JAWIRSCRIPT - The Forge
 -- ============================================================
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -40,14 +37,14 @@ local MineConnection = nil
 local AttackConnection = nil
 local MINING_COOLDOWN = 0.5
 local ATTACK_COOLDOWN = 1.0
-local MINING_SPEED = 100
-local ATTACK_SPEED = 150
+local MINING_SPEED = 70
+local ATTACK_SPEED = 70
 local MINING_SEARCH_RADIUS = 1000
 local ATTACK_SEARCH_RADIUS = 300
 local SelectedRockType = "Any"
 local SelectedMobType = "Any"
 local NOCLIP_ENABLED = true
-local FLY_HEIGHT = 15
+local FLY_HEIGHT = 0
 local MINE_DELAY = 0.5
 local ATTACK_DELAY = 0.3
 
