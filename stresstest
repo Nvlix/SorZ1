@@ -1042,16 +1042,16 @@ local WindUI
 local MainWindow
 
 local function createWindUIGUI()
-    -- Load WindUI Library
+    -- Load WindUI
     WindUI = loadUILibrary()
     if not WindUI then
-        warn("[GUI] Failed to load WindUI, creating fallback GUI")
+        warn("[GUI] Failed to load WindUI, using fallback GUI")
         return createFallbackGUI()
     end
-    
+
     print("[GUI] Creating WindUI Window...")
-    
-    -- Create Main Window with custom OpenButton
+
+    -- ✅ CREATE WINDOW (TANPA PROPERTY INVALID)
     MainWindow = WindUI:CreateWindow({
         Title = "JAWIRSCRIPT SYSTEM v2.0",
         Folder = "JawirScript",
@@ -1062,517 +1062,185 @@ local function createWindUIGUI()
         Acrylic = true,
         Background = Color3.fromRGB(20, 20, 25),
         Author = "Auto Forge + Mine + Attack + ESP System",
-        ToggleKey = Enum.KeyCode.RightControl,
+
+        -- ⛔ MATIKAN TOGGLE KEY (MOBILE SAFE)
+        ToggleKey = nil,
+
+        -- ✅ OPEN BUTTON VALID (WINDUI ASLI)
         OpenButton = {
-            Title = "Open JawirScript",
-            Icon = "zap",
-            CornerRadius = UDim.new(0, 16),
-            StrokeThickness = 2,
-            Color = ColorSequence.new(
-                Color3.fromHex("FF0F7B"), 
-                Color3.fromHex("F89B29")
-            ),
-            OnlyMobile = false,
             Enabled = true,
+            Title = "Jawir",
+            Icon = "zap",
+            OnlyIcon = true,
             Draggable = true,
+            Position = UDim2.new(1, -70, 0.5, -30),
+            Color = ColorSequence.new(
+                Color3.fromHex("FF0F7B"),
+                Color3.fromHex("F89B29")
+            )
         }
     })
-    
-    -- Add Tag
+
+    -- ===================== TAG =====================
     MainWindow:Tag({
         Title = "v2.0",
         Icon = "zap",
         Color = Color3.fromHex("#FF0F7B")
     })
-    
-    -- ===================== TAB 1: AUTO MINE =====================
+
+    ----------------------------------------------------------------
+    -- ===================== TAB AUTO MINE =========================
+    ----------------------------------------------------------------
     local MiningTab = MainWindow:Tab({
         Title = "⛏️ AUTO MINE",
-        Icon = "pickaxe",
-        IconColor = Color3.fromHex("#F89B29"),
+        Icon = "pickaxe"
     })
-    
-    MiningTab:Section({
-        Title = "Mining Configuration",
-        TextSize = 18,
-        FontWeight = Enum.FontWeight.Bold,
-        TextColor = Color3.fromHex("#F89B29")
-    })
-    
+
     MiningTab:Toggle({
         Title = "Enable Auto Mine",
-        Desc = "Automatically mine nearest rocks",
         Value = AutoMineEnabled,
-        Callback = function(value)
-            AutoMineEnabled = toggleAutoMine()
+        Callback = function()
+            toggleAutoMine()
         end
     })
-    
+
     MiningTab:Slider({
         Title = "Fly Speed",
-        Desc = "Movement speed while flying to rocks",
         Value = FLY_SPEED,
         Min = 10,
         Max = 500,
-        Callback = function(value)
-            FLY_SPEED = value
+        Callback = function(v)
+            FLY_SPEED = v
         end
     })
-    
+
     MiningTab:Slider({
         Title = "Fly Height",
-        Desc = "Height to fly while mining",
         Value = FLY_HEIGHT,
         Min = 0,
         Max = 100,
-        Callback = function(value)
-            FLY_HEIGHT = value
+        Callback = function(v)
+            FLY_HEIGHT = v
         end
     })
-    
-    MiningTab:Slider({
-        Title = "Search Radius",
-        Desc = "Distance to search for rocks",
-        Value = MINING_SEARCH_RADIUS,
-        Min = 10,
-        Max = 5000,
-        Callback = function(value)
-            MINING_SEARCH_RADIUS = value
-        end
-    })
-    
-    MiningTab:Slider({
-        Title = "Mining Delay",
-        Desc = "Delay between mining actions",
-        Value = MINE_DELAY,
-        Min = 0.1,
-        Max = 2,
-        Step = 0.1,
-        Callback = function(value)
-            MINE_DELAY = value
-        end
-    })
-    
-    MiningTab:Button({
-        Title = "🚀 Mine Nearest Rock",
-        Desc = "Force mine the closest rock",
-        Justify = "Center",
-        Icon = "target",
-        Callback = function()
-            local rock = findNearestRock()
-            if rock then
-                IsMining = true
-                task.spawn(function()
-                    tweenToTargetAndAttack(rock, false)
-                    IsMining = false
-                end)
-            end
-        end
-    })
-    
-    -- ===================== TAB 2: AUTO ATTACK =====================
+
+    ----------------------------------------------------------------
+    -- ===================== TAB AUTO ATTACK ======================
+    ----------------------------------------------------------------
     local AttackTab = MainWindow:Tab({
         Title = "⚔️ AUTO ATTACK",
-        Icon = "sword",
-        IconColor = Color3.fromHex("#FF0F7B"),
+        Icon = "sword"
     })
-    
-    AttackTab:Section({
-        Title = "Attack Configuration",
-        TextSize = 18,
-        FontWeight = Enum.FontWeight.Bold,
-        TextColor = Color3.fromHex("#FF0F7B")
-    })
-    
+
     AttackTab:Toggle({
         Title = "Enable Auto Attack",
-        Desc = "Automatically attack nearest mobs",
         Value = flags.AutoAttackEnabled,
-        Callback = function(value)
-            flags.AutoAttackEnabled = toggleAutoAttack()
+        Callback = function()
+            toggleAutoAttack()
         end
     })
-    
+
     AttackTab:Slider({
         Title = "Attack Speed",
-        Desc = "Movement speed while attacking",
         Value = ATTACK_SPEED,
         Min = 10,
         Max = 500,
-        Callback = function(value)
-            ATTACK_SPEED = value
+        Callback = function(v)
+            ATTACK_SPEED = v
         end
     })
-    
-    AttackTab:Slider({
-        Title = "Search Radius",
-        Desc = "Distance to search for mobs",
-        Value = ATTACK_SEARCH_RADIUS,
-        Min = 10,
-        Max = 1000,
-        Callback = function(value)
-            ATTACK_SEARCH_RADIUS = value
-        end
-    })
-    
-    AttackTab:Slider({
-        Title = "Attack Delay",
-        Desc = "Delay between attack actions",
-        Value = ATTACK_DELAY,
-        Min = 0.1,
-        Max = 2,
-        Step = 0.1,
-        Callback = function(value)
-            ATTACK_DELAY = value
-        end
-    })
-    
-    AttackTab:Toggle({
-        Title = "Attack While Mining",
-        Desc = "Attack mobs while mining",
-        Value = flags.AttackWhileMining,
-        Callback = function(value)
-            flags.AttackWhileMining = value
-        end
-    })
-    
-    AttackTab:Button({
-        Title = "🎯 Attack Nearest Mob",
-        Desc = "Force attack the closest mob",
-        Justify = "Center",
-        Icon = "target",
-        Callback = function()
-            local mob = findNearestMob()
-            if mob then
-                IsAttacking = true
-                task.spawn(function()
-                    tweenToTargetAndAttack(mob, true)
-                    IsAttacking = false
-                end)
-            end
-        end
-    })
-    
-    -- ===================== TAB 3: ESP SYSTEM =====================
+
+    ----------------------------------------------------------------
+    -- ===================== TAB ESP ===============================
+    ----------------------------------------------------------------
     local ESPTab = MainWindow:Tab({
-        Title = "👁️ ESP SYSTEM",
-        Icon = "eye",
-        IconColor = Color3.fromHex("#00FFAA"),
+        Title = "👁️ ESP",
+        Icon = "eye"
     })
-    
-    ESPTab:Section({
-        Title = "ESP Configuration",
-        TextSize = 18,
-        FontWeight = Enum.FontWeight.Bold,
-        TextColor = Color3.fromHex("#00FFAA")
-    })
-    
+
     ESPTab:Toggle({
         Title = "Rock ESP",
-        Desc = "Show ESP for rocks",
         Value = ESPEnabled,
-        Callback = function(value)
-            ESPEnabled = toggleRockESP()
+        Callback = function()
+            toggleRockESP()
         end
     })
-    
+
     ESPTab:Toggle({
         Title = "Mob ESP",
-        Desc = "Show ESP for mobs (No Players)",
         Value = MobESPEnabled,
-        Callback = function(value)
-            MobESPEnabled = toggleMobESP()
-        end
-    })
-    
-    ESPTab:Slider({
-        Title = "Rock ESP Distance",
-        Desc = "Maximum distance to show rock ESP",
-        Value = ESPDistance,
-        Min = 10,
-        Max = 2000,
-        Callback = function(value)
-            ESPDistance = value
-            for obj, espData in pairs(highlightedObjects) do
-                if espData.Billboard then
-                    espData.Billboard.MaxDistance = ESPDistance
-                end
-            end
-        end
-    })
-    
-    ESPTab:Slider({
-        Title = "Mob ESP Distance",
-        Desc = "Maximum distance to show mob ESP",
-        Value = MobESPDistance,
-        Min = 10,
-        Max = 1000,
-        Callback = function(value)
-            MobESPDistance = value
-            for obj, espData in pairs(highlightedMobs) do
-                if espData.Billboard then
-                    espData.Billboard.MaxDistance = MobESPDistance
-                end
-            end
-        end
-    })
-    
-    ESPTab:Button({
-        Title = "🧹 Clean ESP",
-        Desc = "Remove all ESP elements",
-        Justify = "Center",
-        Icon = "trash-2",
-        Callback = cleanupESP
-    })
-    
-    ESPTab:Button({
-        Title = "🔄 Refresh ESP",
-        Desc = "Rescan for rocks and mobs",
-        Justify = "Center",
-        Icon = "refresh-cw",
         Callback = function()
-            cleanupESP()
-            scanForRocks()
-            scanForMobs()
+            toggleMobESP()
         end
     })
-    
-    -- ===================== TAB 4: FORGE SYSTEM =====================
+
+    ----------------------------------------------------------------
+    -- ===================== TAB FORGE =============================
+    ----------------------------------------------------------------
     local ForgeTab = MainWindow:Tab({
-        Title = "⚒️ FORGE SYSTEM",
-        Icon = "hammer",
-        IconColor = Color3.fromHex("#FFD700"),
+        Title = "⚒️ FORGE",
+        Icon = "hammer"
     })
-    
-    ForgeTab:Section({
-        Title = "Forge Automation",
-        TextSize = 18,
-        FontWeight = Enum.FontWeight.Bold,
-        TextColor = Color3.fromHex("#FFD700")
-    })
-    
+
     ForgeTab:Toggle({
         Title = "Auto Hammer",
-        Desc = "Automatically complete hammer minigame",
         Value = flags.AutoHammerEnabled,
-        Callback = function(value)
-            flags.AutoHammerEnabled = value
+        Callback = function(v)
+            flags.AutoHammerEnabled = v
         end
     })
-    
+
     ForgeTab:Toggle({
         Title = "Skip Melt",
-        Desc = "Skip melt minigame",
         Value = flags.SkipMeltEnabled,
-        Callback = function(value)
-            flags.SkipMeltEnabled = value
+        Callback = function(v)
+            flags.SkipMeltEnabled = v
         end
     })
-    
+
     ForgeTab:Toggle({
         Title = "Skip Pour",
-        Desc = "Skip pour minigame",
         Value = flags.SkipPourEnabled,
-        Callback = function(value)
-            flags.SkipPourEnabled = value
+        Callback = function(v)
+            flags.SkipPourEnabled = v
         end
     })
-    
+
     ForgeTab:Button({
-        Title = "🔧 Activate Forge Hooks",
-        Desc = "Enable forge skipping features",
-        Justify = "Center",
-        Icon = "settings",
+        Title = "Activate Forge Hooks",
         Callback = hookMinigameModules
     })
-    
-    ForgeTab:Button({
-        Title = "⏹️ Stop Hammer",
-        Desc = "Stop auto hammer if running",
-        Justify = "Center",
-        Icon = "square",
-        Callback = stopAutoHammer
-    })
-    
-    -- ===================== TAB 5: MOVEMENT SETTINGS =====================
-    local MovementTab = MainWindow:Tab({
-        Title = "🚀 MOVEMENT",
-        Icon = "move",
-        IconColor = Color3.fromHex("#00BFFF"),
-    })
-    
-    MovementTab:Section({
-        Title = "Movement Settings",
-        TextSize = 18,
-        FontWeight = Enum.FontWeight.Bold,
-        TextColor = Color3.fromHex("#00BFFF")
-    })
-    
-    MovementTab:Toggle({
-        Title = "Noclip",
-        Desc = "Enable noclip during movement",
-        Value = NOCLIP_ENABLED,
-        Callback = function(value)
-            NOCLIP_ENABLED = toggleNoclip()
-        end
-    })
-    
-    MovementTab:Slider({
-        Title = "Fly Speed",
-        Desc = "General flying speed",
-        Value = FLY_SPEED,
-        Min = 10,
-        Max = 500,
-        Callback = function(value)
-            FLY_SPEED = value
-        end
-    })
-    
-    MovementTab:Slider({
-        Title = "Fly Height",
-        Desc = "Height offset while flying",
-        Value = FLY_HEIGHT,
-        Min = 0,
-        Max = 100,
-        Callback = function(value)
-            FLY_HEIGHT = value
-        end
-    })
-    
-    MovementTab:Slider({
-        Title = "Mining Speed",
-        Desc = "Speed while mining (old setting)",
-        Value = MINING_SPEED,
-        Min = 10,
-        Max = 500,
-        Callback = function(value)
-            MINING_SPEED = value
-        end
-    })
-    
-    MovementTab:Slider({
-        Title = "Attack Speed",
-        Desc = "Speed while attacking (old setting)",
-        Value = ATTACK_SPEED,
-        Min = 10,
-        Max = 500,
-        Callback = function(value)
-            ATTACK_SPEED = value
-        end
-    })
-    
-    -- ===================== TAB 6: SYSTEM SETTINGS =====================
+
+    ----------------------------------------------------------------
+    -- ===================== TAB SETTINGS ==========================
+    ----------------------------------------------------------------
     local SettingsTab = MainWindow:Tab({
         Title = "⚙️ SETTINGS",
-        Icon = "settings",
-        IconColor = Color3.fromHex("#888888"),
+        Icon = "settings"
     })
-    
-    SettingsTab:Section({
-        Title = "System Settings",
-        TextSize = 18,
-        FontWeight = Enum.FontWeight.Bold,
-        TextColor = Color3.fromHex("#888888")
-    })
-    
-    SettingsTab:Slider({
-        Title = "Mining Cooldown",
-        Desc = "Delay between mining cycles",
-        Value = MINING_COOLDOWN,
-        Min = 0.1,
-        Max = 5,
-        Step = 0.1,
-        Callback = function(value)
-            MINING_COOLDOWN = value
-        end
-    })
-    
-    SettingsTab:Slider({
-        Title = "Attack Cooldown",
-        Desc = "Delay between attack cycles",
-        Value = ATTACK_COOLDOWN,
-        Min = 0.1,
-        Max = 5,
-        Step = 0.1,
-        Callback = function(value)
-            ATTACK_COOLDOWN = value
-        end
-    })
-    
+
     SettingsTab:Button({
-        Title = "🛑 Stop All Systems",
-        Desc = "Stop all active systems",
-        Justify = "Center",
-        Icon = "power",
+        Title = "STOP ALL SYSTEMS",
         Callback = function()
             stopAutoHammer()
             AutoMineEnabled = false
             flags.AutoAttackEnabled = false
-            IsMining = false
-            IsAttacking = false
+            cleanupESP()
             disableNoclip()
-            
-            if MineConnection then
-                MineConnection:Disconnect()
-                MineConnection = nil
-            end
-            
-            if AttackConnection then
-                AttackConnection:Disconnect()
-                AttackConnection = nil
-            end
-            
-            WindUI:Notify({
-                Title = "All Systems Stopped",
-                Content = "All automation systems have been stopped.",
-                Icon = "check-circle"
-            })
         end
     })
-    
-    SettingsTab:Button({
-        Title = "💾 Save Configuration",
-        Desc = "Save current settings",
-        Justify = "Center",
-        Icon = "save",
-        Callback = function()
-            WindUI:Notify({
-                Title = "Configuration Saved",
-                Content = "Settings have been saved successfully.",
-                Icon = "check"
-            })
+
+    print("[GUI] WindUI Window & Tabs created successfully")
+
+    -- ✅ FIX DRAG MOBILE
+    task.spawn(function()
+        task.wait(1)
+        if MainWindow.OpenButtonMain then
+            MainWindow.OpenButtonMain.Active = true
+            MainWindow.OpenButtonMain.Draggable = true
         end
-    })
-    
-    SettingsTab:Button({
-        Title = "📊 System Status",
-        Desc = "View current system status",
-        Justify = "Center",
-        Icon = "bar-chart",
-        Callback = function()
-            local status = {
-                "=== JAWIRSCRIPT SYSTEM STATUS ===",
-                "Auto Mine: " .. (AutoMineEnabled and "ENABLED" or "DISABLED"),
-                "Auto Attack: " .. (flags.AutoAttackEnabled and "ENABLED" or "DISABLED"),
-                "Rock ESP: " .. (ESPEnabled and "ENABLED" or "DISABLED"),
-                "Mob ESP: " .. (MobESPEnabled and "ENABLED" or "DISABLED"),
-                "Noclip: " .. (NOCLIP_ENABLED and "ENABLED" or "DISABLED"),
-                "Fly Speed: " .. FLY_SPEED .. " studs/sec",
-                "Fly Height: " .. FLY_HEIGHT .. " studs",
-                "Mining Radius: " .. MINING_SEARCH_RADIUS .. " studs",
-                "Attack Radius: " .. ATTACK_SEARCH_RADIUS .. " studs"
-            }
-            
-            print(table.concat(status, "\n"))
-            
-            WindUI:Notify({
-                Title = "System Status",
-                Content = table.concat(status, "\n"),
-                Duration = 5
-            })
-        end
-    })
-    
+    end)
+
     return MainWindow
 end
 
