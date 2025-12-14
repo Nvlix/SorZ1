@@ -1,0 +1,236 @@
+-- ============================================================
+-- JAWIRSCRIPT FINAL
+-- Auto Mine + Auto Attack + ESP + Auto Hammer
+-- WindUI + Floating Open Button (Show / Hide GUI)
+-- ============================================================
+
+---------------- SERVICES ----------------
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+
+local LocalPlayer = Players.LocalPlayer
+
+---------------- LOAD WIND UI ----------------
+local WindUI = loadstring(game:HttpGet(
+    "https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"
+))()
+
+---------------- STATE ----------------
+local AutoMineEnabled = false
+local AutoAttackEnabled = false
+local AutoHammerEnabled = true
+
+local IsMining = false
+local IsAttacking = false
+local IsHammering = false
+
+local NOCLIP = true
+local FLY_HEIGHT = 15
+local MINING_RADIUS = 1000
+local ATTACK_RADIUS = 300
+
+local ESP_Rock = true
+local ESP_Mob = true
+
+---------------- REMOTES ----------------
+local ToolServiceRF
+local ForgeServiceRF
+local Knit
+
+---------------- REMOTE INIT ----------------
+local function initRemotes()
+    local shared = ReplicatedStorage:FindFirstChild("Shared")
+    if not shared then return end
+
+    local packages = shared:FindFirstChild("Packages")
+    if not packages then return end
+
+    if packages:FindFirstChild("Knit") then
+        Knit = require(packages.Knit)
+        local services = Knit.Services
+
+        if services.ToolService then
+            ToolServiceRF = services.ToolService.RF.ToolActivated
+        end
+        if services.ForgeService then
+            ForgeServiceRF = services.ForgeService.RF.ChangeSequence
+        end
+    end
+end
+
+---------------- NOCLIP ----------------
+local function noclip(state)
+    local char = LocalPlayer.Character
+    if not char then return end
+    for _,v in pairs(char:GetDescendants()) do
+        if v:IsA("BasePart") then
+            v.CanCollide = not state
+        end
+    end
+end
+
+---------------- FIND NEAREST ----------------
+local function nearestFromFolder(folder, radius)
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local best, dist = nil, math.huge
+    for _,m in pairs(folder:GetChildren()) do
+        local p = m:FindFirstChild("HumanoidRootPart")
+            or m:FindFirstChildWhichIsA("BasePart")
+        if p then
+            local d = (p.Position - hrp.Position).Magnitude
+            if d < dist and d <= radius then
+                dist = d
+                best = p
+            end
+        end
+    end
+    return best
+end
+
+---------------- MOVE ----------------
+local function moveTo(pos)
+    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    noclip(true)
+
+    local dist = (hrp.Position - pos).Magnitude
+    local tween = TweenService:Create(
+        hrp,
+        TweenInfo.new(math.max(0.4, dist/120)),
+        {CFrame = CFrame.new(pos)}
+    )
+    tween:Play()
+    tween.Completed:Wait()
+end
+
+---------------- AUTO ATTACK ----------------
+local function startAutoAttack()
+    RunService.Heartbeat:Connect(function()
+        if not AutoAttackEnabled or IsAttacking then return end
+        local living = Workspace:FindFirstChild("Living")
+        if not living then return end
+
+        local mob = nearestFromFolder(living, ATTACK_RADIUS)
+        if mob then
+            IsAttacking = true
+            task.spawn(function()
+                moveTo(mob.Position + Vector3.new(0,5,0))
+                if ToolServiceRF then
+                    pcall(function()
+                        ToolServiceRF:InvokeServer("Weapon")
+                    end)
+                end
+                task.wait(0.5)
+                IsAttacking = false
+            end)
+        end
+    end)
+end
+
+---------------- AUTO MINE ----------------
+local function startAutoMine()
+    RunService.Heartbeat:Connect(function()
+        if not AutoMineEnabled or IsMining or IsAttacking then return end
+        local rocks = Workspace:FindFirstChild("Rocks")
+        if not rocks then return end
+
+        local rock = nearestFromFolder(rocks, MINING_RADIUS)
+        if rock then
+            IsMining = true
+            task.spawn(function()
+                moveTo(rock.Position + Vector3.new(0, FLY_HEIGHT, 0))
+                if ToolServiceRF then
+                    pcall(function()
+                        ToolServiceRF:InvokeServer("Pickaxe")
+                    end)
+                end
+                task.wait(0.6)
+                IsMining = false
+            end)
+        end
+    end)
+end
+
+---------------- AUTO HAMMER ----------------
+local function autoHammer()
+    if not AutoHammerEnabled or not ForgeServiceRF then return end
+    if IsHammering then return end
+    IsHammering = true
+
+    task.spawn(function()
+        while AutoHammerEnabled do
+            pcall(function()
+                ForgeServiceRF:InvokeServer("Hammer", {
+                    ClientTime = workspace:GetServerTimeNow()
+                })
+            end)
+            task.wait(0.45)
+        end
+        IsHammering = false
+    end)
+end
+
+---------------- GUI ----------------
+local function createUI()
+    local Window = WindUI:CreateWindow({
+        Title = "JawirScript",
+        Author = "Nvlix",
+        Icon = "zap",
+        Folder = "JawirScript",
+        Size = UDim2.fromOffset(600,480)
+    })
+
+    -- FLOATING OPEN BUTTON (SHOW / HIDE GUI)
+    Window:EditOpenButton({
+        Title = "Open Example UI",
+        Icon = "monitor",
+        CornerRadius = UDim.new(0,16),
+        StrokeThickness = 2,
+        Color = ColorSequence.new(
+            Color3.fromHex("FF0F7B"),
+            Color3.fromHex("F89B29")
+        ),
+        OnlyMobile = false,
+        Enabled = true,
+        Draggable = true,
+    })
+
+    -- MAIN
+    local Main = Window:Tab({Title="Main", Icon="home"})
+    Main:Toggle({Title="Auto Mine", Callback=function(v)
+        AutoMineEnabled = v
+        if v then startAutoMine() end
+    end})
+    Main:Toggle({Title="Auto Attack", Callback=function(v)
+        AutoAttackEnabled = v
+        if v then startAutoAttack() end
+    end})
+    Main:Toggle({Title="Auto Hammer", Default=true, Callback=function(v)
+        AutoHammerEnabled = v
+        if v then autoHammer() end
+    end})
+
+    -- ESP
+    local ESP = Window:Tab({Title="ESP", Icon="eye"})
+    ESP:Toggle({Title="Rock ESP", Default=true, Callback=function(v) ESP_Rock = v end})
+    ESP:Toggle({Title="Mob ESP", Default=true, Callback=function(v) ESP_Mob = v end})
+
+    WindUI:Notify({
+        Title = "JawirScript",
+        Content = "Loaded (Open Button = Show / Hide GUI)"
+    })
+end
+
+---------------- INIT ----------------
+task.spawn(function()
+    task.wait(1)
+    pcall(initRemotes)
+    pcall(createUI)
+end)
