@@ -2116,22 +2116,22 @@ local function createMainWindow()
             Resizable = true,
             Acrylic = true,
             Background = Color3.fromRGB(30, 30, 35),
-            Author = "Auto Forge + Auto Mine + Auto Attack System",
+            Author = "Dev SorZ",
             ToggleKey = Enum.KeyCode.RightControl,
-            OpenButton = {
-                Title = "Jawir Script",
-                Icon = "hammer",
-                Enabled = true,
-                Position = UDim2.new(0.5, -75, 0, 15),
-                OnlyIcon = false,
-                Draggable = true,
-                Color = ColorSequence.new(
-                    Color3.fromHex("#FF6B6B"),
-                    Color3.fromHex("#4ECDC4")
-                )
-            }
-        })
-    end)
+            window:EditOpenButton({
+    Title = "Open Example UI",
+    Icon = "moon",
+    CornerRadius = UDim.new(0,16),
+    StrokeThickness = 2,
+    Color = ColorSequence.new(
+        Color3.fromHex("FF0F7B"),
+        Color3.fromHex("F89B29")
+    ),
+    OnlyMobile = false,
+    Enabled = true,
+    Draggable = true,
+})
+
     
     if not success then
         print("[GUI] Failed to create WindUI window: " .. tostring(window))
