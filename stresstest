@@ -3,7 +3,7 @@
 -- ============================================================
 -- Gabungan sistem: Forge Skipper + Auto Mine System + Mob ESP & Auto Attack
 -- TIDAK DETEKSI PLAYER - HANYA MOB
--- GUI: WindUI Modern Interface
+-- GUI: Simple GUI dengan OpenButton
 -- ============================================================
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -49,7 +49,6 @@ local SelectedRockType = "Any"
 local SelectedMobType = "Any"
 local NOCLIP_ENABLED = true
 local FLY_HEIGHT = 15
-local FLY_SPEED = 150
 local MINE_DELAY = 0.5
 local ATTACK_DELAY = 0.3
 
@@ -210,22 +209,6 @@ local flags = {
     AutoAttackEnabled = true,
     AttackWhileMining = true
 }
-
-----------------------------------------------------------------
--- LOAD WINDUI LIBRARY
-----------------------------------------------------------------
-local function loadUILibrary()
-    local success, result = pcall(function()
-        return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
-    end)
-    
-    if success then
-        return result
-    else
-        warn("[WINDUI] Failed to load WindUI Library")
-        return nil
-    end
-end
 
 ----------------------------------------------------------------
 -- INITIALIZE REMOTES
@@ -766,7 +749,7 @@ local function tweenToTargetAndAttack(targetData, isMob)
     end
     
     local distance = (humanoidRootPart.Position - targetPosition).Magnitude
-    local speed = isMob and ATTACK_SPEED or FLY_SPEED
+    local speed = isMob and ATTACK_SPEED or MINING_SPEED
     local duration = math.max(0.5, distance / speed)
     
     local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear)
@@ -1035,867 +1018,514 @@ local function toggleNoclip()
 end
 
 ----------------------------------------------------------------
--- ====================== WINDUI GUI ========================
+-- ===================== SIMPLE GUI ========================
 ----------------------------------------------------------------
 
-local WindUI
-local MainWindow
+local MainGUI
+local guiVisible = false
+local toggleKeybind = "RightControl"
 
-local function createWindUIGUI()
-    -- Load WindUI Library
-    WindUI = loadUILibrary()
-    if not WindUI then
-        warn("[GUI] Failed to load WindUI, creating fallback GUI")
-        return createFallbackGUI()
-    end
+local function createSimpleGUI()
+    -- Buat OpenButton seperti contoh
+    local openButton = Instance.new("TextButton")
+    openButton.Name = "JawirScriptOpenButton"
+    openButton.Size = UDim2.new(0, 120, 0, 40)
+    openButton.Position = UDim2.new(0.5, -60, 0, 20)
+    openButton.Text = "Open JawirScript"
+    openButton.Font = Enum.Font.SourceSansBold
+    openButton.TextSize = 14
+    openButton.TextColor3 = Color3.new(1, 1, 1)
+    openButton.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+    openButton.BackgroundTransparency = 0.3
+    openButton.BorderSizePixel = 0
+    openButton.Visible = true
+    openButton.Active = true
+    openButton.Draggable = true
+    openButton.ZIndex = 100
     
-    print("[GUI] Creating WindUI Window...")
+    -- Tambahkan corner radius
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 16)
+    corner.Parent = openButton
     
-    -- Create Main Window with custom OpenButton
-    MainWindow = WindUI:CreateWindow({
-        Title = "JAWIRSCRIPT SYSTEM v3.0",
-        Folder = "JawirScript",
-        Theme = "Dark",
-        Size = UDim2.new(0, 500, 0, 600),
-        Radius = 14,
-        Resizable = true,
-        Acrylic = true,
-        Background = Color3.fromRGB(20, 20, 25),
-        Author = "Auto Forge + Mine + Attack + ESP System",
-        ToggleKey = Enum.KeyCode.RightControl,
-        OpenButton = {
-            Title = "Open JawirScript",
-            Icon = "zap",
-            CornerRadius = UDim.new(0, 16),
-            StrokeThickness = 2,
-            Color = ColorSequence.new(
-                Color3.fromHex("FF0F7B"), 
-                Color3.fromHex("F89B29")
-            ),
-            OnlyMobile = false,
-            Enabled = true,
-            Draggable = true,
+    -- Tambahkan stroke
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.new(1, 1, 1)
+    stroke.Thickness = 2
+    stroke.Parent = openButton
+    
+    -- Gradient color
+    local gradient = Instance.new("UIGradient")
+    gradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromHex("FF0F7B")),
+        ColorSequenceKeypoint.new(1, Color3.fromHex("F89B29"))
+    })
+    gradient.Rotation = 90
+    gradient.Parent = openButton
+    
+    -- Buat ScreenGui
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "JawirScriptGUI"
+    screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    
+    openButton.Parent = screenGui
+    
+    -- Buat Main Frame (awalnya hidden)
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Name = "MainFrame"
+    mainFrame.Size = UDim2.new(0, 350, 0, 450)
+    mainFrame.Position = UDim2.new(0.5, -175, 0.5, -225)
+    mainFrame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.15)
+    mainFrame.BackgroundTransparency = 0.1
+    mainFrame.BorderSizePixel = 0
+    mainFrame.Visible = false
+    mainFrame.Active = true
+    mainFrame.Draggable = true
+    mainFrame.Parent = screenGui
+    
+    local mainCorner = Instance.new("UICorner")
+    mainCorner.CornerRadius = UDim.new(0, 8)
+    mainCorner.Parent = mainFrame
+    
+    -- Title Bar
+    local titleBar = Instance.new("Frame")
+    titleBar.Size = UDim2.new(1, 0, 0, 40)
+    titleBar.Position = UDim2.new(0, 0, 0, 0)
+    titleBar.BackgroundColor3 = Color3.new(0.15, 0.15, 0.2)
+    titleBar.BorderSizePixel = 0
+    titleBar.Parent = mainFrame
+    
+    local titleCorner = Instance.new("UICorner")
+    titleCorner.CornerRadius = UDim.new(0, 8)
+    titleCorner.Parent = titleBar
+    
+    local titleText = Instance.new("TextLabel")
+    titleText.Size = UDim2.new(1, -40, 1, 0)
+    titleText.Position = UDim2.new(0, 10, 0, 0)
+    titleText.Text = "JAWIRSCRIPT SYSTEM"
+    titleText.TextColor3 = Color3.new(1, 1, 1)
+    titleText.Font = Enum.Font.SourceSansBold
+    titleText.TextSize = 18
+    titleText.BackgroundTransparency = 1
+    titleText.Parent = titleBar
+    
+    local closeButton = Instance.new("TextButton")
+    closeButton.Size = UDim2.new(0, 30, 0, 30)
+    closeButton.Position = UDim2.new(1, -35, 0.5, -15)
+    closeButton.Text = "X"
+    closeButton.TextColor3 = Color3.new(1, 1, 1)
+    closeButton.Font = Enum.Font.SourceSansBold
+    closeButton.TextSize = 16
+    closeButton.BackgroundColor3 = Color3.new(0.8, 0.2, 0.2)
+    closeButton.BorderSizePixel = 0
+    closeButton.Parent = titleBar
+    
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 6)
+    closeCorner.Parent = closeButton
+    
+    -- Scrollable Content
+    local scrollFrame = Instance.new("ScrollingFrame")
+    scrollFrame.Size = UDim2.new(1, -10, 1, -50)
+    scrollFrame.Position = UDim2.new(0, 5, 0, 45)
+    scrollFrame.BackgroundTransparency = 1
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 800)
+    scrollFrame.ScrollBarThickness = 8
+    scrollFrame.Parent = mainFrame
+    
+    local layout = Instance.new("UIListLayout")
+    layout.Padding = UDim.new(0, 8)
+    layout.Parent = scrollFrame
+    
+    -- Tabs System
+    local tabs = {}
+    local currentTab = 1
+    
+    local function createTab(name, color)
+        local tabFrame = Instance.new("Frame")
+        tabFrame.Size = UDim2.new(1, -10, 0, 0) -- Height akan diatur nanti
+        tabFrame.BackgroundTransparency = 1
+        tabFrame.Visible = false
+        tabFrame.Parent = scrollFrame
+        
+        local tabLayout = Instance.new("UIListLayout")
+        tabLayout.Padding = UDim.new(0, 8)
+        tabLayout.Parent = tabFrame
+        
+        tabs[#tabs + 1] = {
+            Name = name,
+            Color = color,
+            Frame = tabFrame,
+            Buttons = {}
         }
-    })
-    
-    -- Add Tag
-    MainWindow:Tag({
-        Title = "v3.0",
-        Icon = "zap",
-        Color = Color3.fromHex("#FF0F7B")
-    })
-    
-    -- ===================== TAB 1: AUTO MINE =====================
-    local MiningTab = MainWindow:Tab({
-        Title = "⛏️ AUTO MINE",
-        Icon = "pickaxe",
-        IconColor = Color3.fromHex("#F89B29"),
-    })
-    
-    MiningTab:Section({
-        Title = "Mining Configuration",
-        TextSize = 16,
-        FontWeight = Enum.FontWeight.Bold,
-    })
-    
-    MiningTab:Toggle({
-        Title = "Enable Auto Mine",
-        Desc = "Automatically mine nearest rocks",
-        Value = AutoMineEnabled,
-        Callback = function(value)
-            AutoMineEnabled = toggleAutoMine()
-        end
-    })
-    
-    MiningTab:Slider({
-        Title = "Fly Speed",
-        Desc = "Movement speed while flying to rocks",
-        Value = FLY_SPEED,
-        Min = 10,
-        Max = 500,
-        Callback = function(value)
-            FLY_SPEED = value
-        end
-    })
-    
-    MiningTab:Slider({
-        Title = "Fly Height",
-        Desc = "Height to fly while mining",
-        Value = FLY_HEIGHT,
-        Min = 0,
-        Max = 100,
-        Callback = function(value)
-            FLY_HEIGHT = value
-        end
-    })
-    
-    MiningTab:Slider({
-        Title = "Search Radius",
-        Desc = "Distance to search for rocks",
-        Value = MINING_SEARCH_RADIUS,
-        Min = 10,
-        Max = 5000,
-        Callback = function(value)
-            MINING_SEARCH_RADIUS = value
-        end
-    })
-    
-    MiningTab:Slider({
-        Title = "Mining Delay",
-        Desc = "Delay between mining actions",
-        Value = MINE_DELAY,
-        Min = 0.1,
-        Max = 2,
-        Step = 0.1,
-        Callback = function(value)
-            MINE_DELAY = value
-        end
-    })
-    
-    MiningTab:Button({
-        Title = "🚀 Mine Nearest Rock",
-        Desc = "Force mine the closest rock",
-        Justify = "Center",
-        Icon = "target",
-        Callback = function()
-            local rock = findNearestRock()
-            if rock then
-                IsMining = true
-                task.spawn(function()
-                    tweenToTargetAndAttack(rock, false)
-                    IsMining = false
-                end)
-            end
-        end
-    })
-    
-    -- ===================== TAB 2: AUTO ATTACK =====================
-    local AttackTab = MainWindow:Tab({
-        Title = "⚔️ AUTO ATTACK",
-        Icon = "sword",
-        IconColor = Color3.fromHex("#FF0F7B"),
-    })
-    
-    AttackTab:Section({
-        Title = "Attack Configuration",
-        TextSize = 16,
-        FontWeight = Enum.FontWeight.Bold,
-    })
-    
-    AttackTab:Toggle({
-        Title = "Enable Auto Attack",
-        Desc = "Automatically attack nearest mobs",
-        Value = flags.AutoAttackEnabled,
-        Callback = function(value)
-            flags.AutoAttackEnabled = toggleAutoAttack()
-        end
-    })
-    
-    AttackTab:Slider({
-        Title = "Attack Speed",
-        Desc = "Movement speed while attacking",
-        Value = ATTACK_SPEED,
-        Min = 10,
-        Max = 500,
-        Callback = function(value)
-            ATTACK_SPEED = value
-        end
-    })
-    
-    AttackTab:Slider({
-        Title = "Search Radius",
-        Desc = "Distance to search for mobs",
-        Value = ATTACK_SEARCH_RADIUS,
-        Min = 10,
-        Max = 1000,
-        Callback = function(value)
-            ATTACK_SEARCH_RADIUS = value
-        end
-    })
-    
-    AttackTab:Slider({
-        Title = "Attack Delay",
-        Desc = "Delay between attack actions",
-        Value = ATTACK_DELAY,
-        Min = 0.1,
-        Max = 2,
-        Step = 0.1,
-        Callback = function(value)
-            ATTACK_DELAY = value
-        end
-    })
-    
-    AttackTab:Toggle({
-        Title = "Attack While Mining",
-        Desc = "Attack mobs while mining",
-        Value = flags.AttackWhileMining,
-        Callback = function(value)
-            flags.AttackWhileMining = value
-        end
-    })
-    
-    AttackTab:Button({
-        Title = "🎯 Attack Nearest Mob",
-        Desc = "Force attack the closest mob",
-        Justify = "Center",
-        Icon = "target",
-        Callback = function()
-            local mob = findNearestMob()
-            if mob then
-                IsAttacking = true
-                task.spawn(function()
-                    tweenToTargetAndAttack(mob, true)
-                    IsAttacking = false
-                end)
-            end
-        end
-    })
-    
-    -- ===================== TAB 3: ESP SYSTEM =====================
-    local ESPTab = MainWindow:Tab({
-        Title = "👁️ ESP SYSTEM",
-        Icon = "eye",
-        IconColor = Color3.fromHex("#00FFAA"),
-    })
-    
-    ESPTab:Section({
-        Title = "ESP Configuration",
-        TextSize = 16,
-        FontWeight = Enum.FontWeight.Bold,
-    })
-    
-    ESPTab:Toggle({
-        Title = "Rock ESP",
-        Desc = "Show ESP for rocks",
-        Value = ESPEnabled,
-        Callback = function(value)
-            ESPEnabled = toggleRockESP()
-        end
-    })
-    
-    ESPTab:Toggle({
-        Title = "Mob ESP",
-        Desc = "Show ESP for mobs (No Players)",
-        Value = MobESPEnabled,
-        Callback = function(value)
-            MobESPEnabled = toggleMobESP()
-        end
-    })
-    
-    ESPTab:Slider({
-        Title = "Rock ESP Distance",
-        Desc = "Maximum distance to show rock ESP",
-        Value = ESPDistance,
-        Min = 10,
-        Max = 2000,
-        Callback = function(value)
-            ESPDistance = value
-            for obj, espData in pairs(highlightedObjects) do
-                if espData.Billboard then
-                    espData.Billboard.MaxDistance = ESPDistance
-                end
-            end
-        end
-    })
-    
-    ESPTab:Slider({
-        Title = "Mob ESP Distance",
-        Desc = "Maximum distance to show mob ESP",
-        Value = MobESPDistance,
-        Min = 10,
-        Max = 1000,
-        Callback = function(value)
-            MobESPDistance = value
-            for obj, espData in pairs(highlightedMobs) do
-                if espData.Billboard then
-                    espData.Billboard.MaxDistance = MobESPDistance
-                end
-            end
-        end
-    })
-    
-    ESPTab:Button({
-        Title = "🧹 Clean ESP",
-        Desc = "Remove all ESP elements",
-        Justify = "Center",
-        Icon = "trash-2",
-        Callback = cleanupESP
-    })
-    
-    ESPTab:Button({
-        Title = "🔄 Refresh ESP",
-        Desc = "Rescan for rocks and mobs",
-        Justify = "Center",
-        Icon = "refresh-cw",
-        Callback = function()
-            cleanupESP()
-            scanForRocks()
-            scanForMobs()
-        end
-    })
-    
-    -- ===================== TAB 4: FORGE SYSTEM =====================
-    local ForgeTab = MainWindow:Tab({
-        Title = "⚒️ FORGE SYSTEM",
-        Icon = "hammer",
-        IconColor = Color3.fromHex("#FFD700"),
-    })
-    
-    ForgeTab:Section({
-        Title = "Forge Automation",
-        TextSize = 16,
-        FontWeight = Enum.FontWeight.Bold,
-    })
-    
-    ForgeTab:Toggle({
-        Title = "Auto Hammer",
-        Desc = "Automatically complete hammer minigame",
-        Value = flags.AutoHammerEnabled,
-        Callback = function(value)
-            flags.AutoHammerEnabled = value
-        end
-    })
-    
-    ForgeTab:Toggle({
-        Title = "Skip Melt",
-        Desc = "Skip melt minigame",
-        Value = flags.SkipMeltEnabled,
-        Callback = function(value)
-            flags.SkipMeltEnabled = value
-        end
-    })
-    
-    ForgeTab:Toggle({
-        Title = "Skip Pour",
-        Desc = "Skip pour minigame",
-        Value = flags.SkipPourEnabled,
-        Callback = function(value)
-            flags.SkipPourEnabled = value
-        end
-    })
-    
-    ForgeTab:Button({
-        Title = "🔧 Activate Forge Hooks",
-        Desc = "Enable forge skipping features",
-        Justify = "Center",
-        Icon = "settings",
-        Callback = hookMinigameModules
-    })
-    
-    ForgeTab:Button({
-        Title = "⏹️ Stop Hammer",
-        Desc = "Stop auto hammer if running",
-        Justify = "Center",
-        Icon = "square",
-        Callback = stopAutoHammer
-    })
-    
-    -- ===================== TAB 5: MOVEMENT SETTINGS =====================
-    local MovementTab = MainWindow:Tab({
-        Title = "🚀 MOVEMENT",
-        Icon = "move",
-        IconColor = Color3.fromHex("#00BFFF"),
-    })
-    
-    MovementTab:Section({
-        Title = "Movement Settings",
-        TextSize = 16,
-        FontWeight = Enum.FontWeight.Bold,
-    })
-    
-    MovementTab:Toggle({
-        Title = "Noclip",
-        Desc = "Enable noclip during movement",
-        Value = NOCLIP_ENABLED,
-        Callback = function(value)
-            NOCLIP_ENABLED = toggleNoclip()
-        end
-    })
-    
-    MovementTab:Slider({
-        Title = "Fly Speed",
-        Desc = "General flying speed",
-        Value = FLY_SPEED,
-        Min = 10,
-        Max = 500,
-        Callback = function(value)
-            FLY_SPEED = value
-        end
-    })
-    
-    MovementTab:Slider({
-        Title = "Fly Height",
-        Desc = "Height offset while flying",
-        Value = FLY_HEIGHT,
-        Min = 0,
-        Max = 100,
-        Callback = function(value)
-            FLY_HEIGHT = value
-        end
-    })
-    
-    MovementTab:Slider({
-        Title = "Mining Cooldown",
-        Desc = "Delay between mining cycles",
-        Value = MINING_COOLDOWN,
-        Min = 0.1,
-        Max = 5,
-        Step = 0.1,
-        Callback = function(value)
-            MINING_COOLDOWN = value
-        end
-    })
-    
-    MovementTab:Slider({
-        Title = "Attack Cooldown",
-        Desc = "Delay between attack cycles",
-        Value = ATTACK_COOLDOWN,
-        Min = 0.1,
-        Max = 5,
-        Step = 0.1,
-        Callback = function(value)
-            ATTACK_COOLDOWN = value
-        end
-    })
-    
-    -- ===================== TAB 6: SYSTEM SETTINGS =====================
-    local SettingsTab = MainWindow:Tab({
-        Title = "⚙️ SETTINGS",
-        Icon = "settings",
-        IconColor = Color3.fromHex("#888888"),
-    })
-    
-    SettingsTab:Section({
-        Title = "System Settings",
-        TextSize = 16,
-        FontWeight = Enum.FontWeight.Bold,
-    })
-    
-    SettingsTab:Slider({
-        Title = "Mining Speed (Legacy)",
-        Desc = "Old mining speed setting",
-        Value = MINING_SPEED,
-        Min = 10,
-        Max = 500,
-        Callback = function(value)
-            MINING_SPEED = value
-        end
-    })
-    
-    SettingsTab:Slider({
-        Title = "Attack Speed (Legacy)",
-        Desc = "Old attack speed setting",
-        Value = ATTACK_SPEED,
-        Min = 10,
-        Max = 500,
-        Callback = function(value)
-            ATTACK_SPEED = value
-        end
-    })
-    
-    SettingsTab:Button({
-        Title = "🛑 Stop All Systems",
-        Desc = "Stop all active systems",
-        Justify = "Center",
-        Icon = "power",
-        Callback = function()
-            stopAutoHammer()
-            AutoMineEnabled = false
-            flags.AutoAttackEnabled = false
-            IsMining = false
-            IsAttacking = false
-            disableNoclip()
-            
-            if MineConnection then
-                MineConnection:Disconnect()
-                MineConnection = nil
-            end
-            
-            if AttackConnection then
-                AttackConnection:Disconnect()
-                AttackConnection = nil
-            end
-            
-            WindUI:Notify({
-                Title = "All Systems Stopped",
-                Content = "All automation systems have been stopped.",
-                Icon = "check-circle"
-            })
-        end
-    })
-    
-    SettingsTab:Button({
-        Title = "💾 Save Configuration",
-        Desc = "Save current settings",
-        Justify = "Center",
-        Icon = "save",
-        Callback = function()
-            WindUI:Notify({
-                Title = "Configuration Saved",
-                Content = "Settings have been saved successfully.",
-                Icon = "check"
-            })
-        end
-    })
-    
-    SettingsTab:Button({
-        Title = "📊 System Status",
-        Desc = "View current system status",
-        Justify = "Center",
-        Icon = "bar-chart",
-        Callback = function()
-            local status = {
-                "=== JAWIRSCRIPT SYSTEM STATUS ===",
-                "Auto Mine: " .. (AutoMineEnabled and "ENABLED" or "DISABLED"),
-                "Auto Attack: " .. (flags.AutoAttackEnabled and "ENABLED" or "DISABLED"),
-                "Rock ESP: " .. (ESPEnabled and "ENABLED" or "DISABLED"),
-                "Mob ESP: " .. (MobESPEnabled and "ENABLED" or "DISABLED"),
-                "Noclip: " .. (NOCLIP_ENABLED and "ENABLED" or "DISABLED"),
-                "Fly Speed: " .. FLY_SPEED .. " studs/sec",
-                "Fly Height: " .. FLY_HEIGHT .. " studs",
-                "Mining Radius: " .. MINING_SEARCH_RADIUS .. " studs",
-                "Attack Radius: " .. ATTACK_SEARCH_RADIUS .. " studs"
-            }
-            
-            print(table.concat(status, "\n"))
-            
-            WindUI:Notify({
-                Title = "System Status",
-                Content = table.concat(status, "\n"),
-                Duration = 5
-            })
-        end
-    })
-    
-    -- Edit OpenButton untuk pastikan custom setting diterapkan
-    task.wait(1)
-    if MainWindow and MainWindow.EditOpenButton then
-        MainWindow:EditOpenButton({
-            Title = "Open JawirScript",
-            Icon = "zap",
-            CornerRadius = UDim.new(0, 16),
-            StrokeThickness = 2,
-            Color = ColorSequence.new(
-                Color3.fromHex("FF0F7B"), 
-                Color3.fromHex("F89B29")
-            ),
-            OnlyMobile = false,
-            Enabled = true,
-            Draggable = true,
-        })
+        
+        return #tabs
     end
     
-    return MainWindow
-end
-
-local function createFallbackGUI()
-    local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "JawirScriptFallbackGUI"
-    ScreenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+    local function switchToTab(tabIndex)
+        for i, tab in ipairs(tabs) do
+            tab.Frame.Visible = (i == tabIndex)
+        end
+        currentTab = tabIndex
+    end
     
-    local MainFrame = Instance.new("Frame")
-    MainFrame.Size = UDim2.new(0, 400, 0, 500)
-    MainFrame.Position = UDim2.new(0.5, -200, 0.5, -250)
-    MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-    MainFrame.BorderSizePixel = 0
-    MainFrame.Active = true
-    MainFrame.Draggable = true
-    MainFrame.Visible = true
-    MainFrame.Parent = ScreenGui
+    -- Tab 1: Auto Mine
+    local mineTab = createTab("Auto Mine", Color3.fromHex("#F89B29"))
     
-    local UICorner = Instance.new("UICorner")
-    UICorner.CornerRadius = UDim.new(0, 8)
-    UICorner.Parent = MainFrame
+    -- Mining Controls
+    local function createMiningButton(text, callback)
+        local button = Instance.new("TextButton")
+        button.Size = UDim2.new(1, -10, 0, 40)
+        button.Text = text
+        button.TextColor3 = Color3.new(1, 1, 1)
+        button.Font = Enum.Font.SourceSansSemibold
+        button.TextSize = 16
+        button.BackgroundColor3 = Color3.fromHex("#F89B29")
+        button.BorderSizePixel = 0
+        button.Parent = tabs[mineTab].Frame
+        
+        local buttonCorner = Instance.new("UICorner")
+        buttonCorner.CornerRadius = UDim.new(0, 6)
+        buttonCorner.Parent = button
+        
+        button.MouseButton1Click:Connect(callback)
+        table.insert(tabs[mineTab].Buttons, button)
+        return button
+    end
     
-    local Title = Instance.new("TextLabel")
-    Title.Size = UDim2.new(1, 0, 0, 40)
-    Title.Position = UDim2.new(0, 0, 0, 0)
-    Title.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
-    Title.Text = "JawirScript - Fallback GUI"
-    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    Title.Font = Enum.Font.SourceSansBold
-    Title.TextSize = 18
-    Title.Parent = MainFrame
+    -- Mining tab content
+    local mineToggleBtn = createMiningButton("⛏️ Toggle Auto Mine", toggleAutoMine)
+    local mineNowBtn = createMiningButton("🚀 Mine Nearest Rock", function()
+        local rock = findNearestRock()
+        if rock then
+            IsMining = true
+            task.spawn(function()
+                tweenToTargetAndAttack(rock, false)
+                IsMining = false
+            end)
+        end
+    end)
+    local noclipBtn = createMiningButton("👻 Toggle Noclip", toggleNoclip)
     
-    -- Create Tab Buttons
-    local tabButtons = {}
-    local tabs = {
-        {"⛏️ Mining", Color3.fromRGB(255, 165, 0)},
-        {"⚔️ Attack", Color3.fromRGB(255, 0, 0)},
-        {"👁️ ESP", Color3.fromRGB(0, 255, 170)},
-        {"⚒️ Forge", Color3.fromRGB(255, 215, 0)},
-        {"🚀 Movement", Color3.fromRGB(0, 191, 255)},
-        {"⚙️ Settings", Color3.fromRGB(136, 136, 136)}
+    -- Fly Height Slider
+    local flyHeightFrame = Instance.new("Frame")
+    flyHeightFrame.Size = UDim2.new(1, -10, 0, 60)
+    flyHeightFrame.BackgroundTransparency = 1
+    flyHeightFrame.Parent = tabs[mineTab].Frame
+    
+    local flyHeightLabel = Instance.new("TextLabel")
+    flyHeightLabel.Size = UDim2.new(1, 0, 0, 20)
+    flyHeightLabel.Position = UDim2.new(0, 0, 0, 0)
+    flyHeightLabel.Text = "Fly Height: " .. FLY_HEIGHT
+    flyHeightLabel.TextColor3 = Color3.new(1, 1, 1)
+    flyHeightLabel.Font = Enum.Font.SourceSansSemibold
+    flyHeightLabel.TextSize = 14
+    flyHeightLabel.BackgroundTransparency = 1
+    flyHeightLabel.Parent = flyHeightFrame
+    
+    local flyHeightSlider = Instance.new("Frame")
+    flyHeightSlider.Size = UDim2.new(1, 0, 0, 30)
+    flyHeightSlider.Position = UDim2.new(0, 0, 0, 25)
+    flyHeightSlider.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+    flyHeightSlider.BorderSizePixel = 0
+    flyHeightSlider.Parent = flyHeightFrame
+    
+    local sliderCorner = Instance.new("UICorner")
+    sliderCorner.CornerRadius = UDim.new(0, 4)
+    sliderCorner.Parent = flyHeightSlider
+    
+    local fill = Instance.new("Frame")
+    fill.Size = UDim2.new((FLY_HEIGHT / 100), 0, 1, 0)
+    fill.BackgroundColor3 = Color3.fromHex("#F89B29")
+    fill.BorderSizePixel = 0
+    fill.Parent = flyHeightSlider
+    
+    local fillCorner = Instance.new("UICorner")
+    fillCorner.CornerRadius = UDim.new(0, 4)
+    fillCorner.Parent = fill
+    
+    -- Slider interaction
+    local dragging = false
+    flyHeightSlider.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+        end
+    end)
+    
+    flyHeightSlider.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+    
+    flyHeightSlider.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local xPos = input.Position.X - flyHeightSlider.AbsolutePosition.X
+            local width = flyHeightSlider.AbsoluteSize.X
+            local percent = math.clamp(xPos / width, 0, 1)
+            
+            FLY_HEIGHT = math.floor(percent * 100)
+            fill.Size = UDim2.new(percent, 0, 1, 0)
+            flyHeightLabel.Text = "Fly Height: " .. FLY_HEIGHT
+        end
+    end)
+    
+    -- Tab 2: Auto Attack
+    local attackTab = createTab("Auto Attack", Color3.fromHex("#FF0F7B"))
+    
+    local function createAttackButton(text, callback)
+        local button = Instance.new("TextButton")
+        button.Size = UDim2.new(1, -10, 0, 40)
+        button.Text = text
+        button.TextColor3 = Color3.new(1, 1, 1)
+        button.Font = Enum.Font.SourceSansSemibold
+        button.TextSize = 16
+        button.BackgroundColor3 = Color3.fromHex("#FF0F7B")
+        button.BorderSizePixel = 0
+        button.Parent = tabs[attackTab].Frame
+        
+        local buttonCorner = Instance.new("UICorner")
+        buttonCorner.CornerRadius = UDim.new(0, 6)
+        buttonCorner.Parent = button
+        
+        button.MouseButton1Click:Connect(callback)
+        table.insert(tabs[attackTab].Buttons, button)
+        return button
+    end
+    
+    local attackToggleBtn = createAttackButton("⚔️ Toggle Auto Attack", toggleAutoAttack)
+    local attackNowBtn = createAttackButton("🎯 Attack Nearest Mob", function()
+        local mob = findNearestMob()
+        if mob then
+            IsAttacking = true
+            task.spawn(function()
+                tweenToTargetAndAttack(mob, true)
+                IsAttacking = false
+            end)
+        end
+    end)
+    local attackMiningToggle = createAttackButton("🔀 Toggle Attack While Mining", function()
+        flags.AttackWhileMining = not flags.AttackWhileMining
+        attackMiningToggle.Text = "🔀 Attack While Mining: " .. (flags.AttackWhileMining and "ON" or "OFF")
+    end)
+    
+    -- Tab 3: ESP System
+    local espTab = createTab("ESP System", Color3.fromHex("#00FFAA"))
+    
+    local function createESPButton(text, callback)
+        local button = Instance.new("TextButton")
+        button.Size = UDim2.new(1, -10, 0, 40)
+        button.Text = text
+        button.TextColor3 = Color3.new(1, 1, 1)
+        button.Font = Enum.Font.SourceSansSemibold
+        button.TextSize = 16
+        button.BackgroundColor3 = Color3.fromHex("#00FFAA")
+        button.BorderSizePixel = 0
+        button.Parent = tabs[espTab].Frame
+        
+        local buttonCorner = Instance.new("UICorner")
+        buttonCorner.CornerRadius = UDim.new(0, 6)
+        buttonCorner.Parent = button
+        
+        button.MouseButton1Click:Connect(callback)
+        table.insert(tabs[espTab].Buttons, button)
+        return button
+    end
+    
+    local rockESPBtn = createESPButton("🗿 Toggle Rock ESP", toggleRockESP)
+    local mobESPBtn = createESPButton("👹 Toggle Mob ESP", toggleMobESP)
+    local cleanESPBtn = createESPButton("🧹 Clean ESP", cleanupESP)
+    local refreshESPBtn = createESPButton("🔄 Refresh ESP", function()
+        cleanupESP()
+        scanForRocks()
+        scanForMobs()
+    end)
+    
+    -- Tab 4: Forge System
+    local forgeTab = createTab("Forge System", Color3.fromHex("#FFD700"))
+    
+    local function createForgeButton(text, callback)
+        local button = Instance.new("TextButton")
+        button.Size = UDim2.new(1, -10, 0, 40)
+        button.Text = text
+        button.TextColor3 = Color3.new(1, 1, 1)
+        button.Font = Enum.Font.SourceSansSemibold
+        button.TextSize = 16
+        button.BackgroundColor3 = Color3.fromHex("#FFD700")
+        button.BorderSizePixel = 0
+        button.Parent = tabs[forgeTab].Frame
+        
+        local buttonCorner = Instance.new("UICorner")
+        buttonCorner.CornerRadius = UDim.new(0, 6)
+        buttonCorner.Parent = button
+        
+        button.MouseButton1Click:Connect(callback)
+        table.insert(tabs[forgeTab].Buttons, button)
+        return button
+    end
+    
+    local autoHammerBtn = createForgeButton("🔨 Toggle Auto Hammer", function()
+        flags.AutoHammerEnabled = not flags.AutoHammerEnabled
+        autoHammerBtn.Text = "🔨 Auto Hammer: " .. (flags.AutoHammerEnabled and "ON" or "OFF")
+    end)
+    local activateHooksBtn = createForgeButton("🔧 Activate Forge Hooks", hookMinigameModules)
+    local stopHammerBtn = createForgeButton("⏹️ Stop Hammer", stopAutoHammer)
+    
+    -- Tab 5: System Settings
+    local settingsTab = createTab("Settings", Color3.fromHex("#888888"))
+    
+    local function createSettingsButton(text, callback)
+        local button = Instance.new("TextButton")
+        button.Size = UDim2.new(1, -10, 0, 40)
+        button.Text = text
+        button.TextColor3 = Color3.new(1, 1, 1)
+        button.Font = Enum.Font.SourceSansSemibold
+        button.TextSize = 16
+        button.BackgroundColor3 = Color3.fromHex("#888888")
+        button.BorderSizePixel = 0
+        button.Parent = tabs[settingsTab].Frame
+        
+        local buttonCorner = Instance.new("UICorner")
+        buttonCorner.CornerRadius = UDim.new(0, 6)
+        buttonCorner.Parent = button
+        
+        button.MouseButton1Click:Connect(callback)
+        table.insert(tabs[settingsTab].Buttons, button)
+        return button
+    end
+    
+    local stopAllBtn = createSettingsButton("🛑 Stop All Systems", function()
+        stopAutoHammer()
+        AutoMineEnabled = false
+        flags.AutoAttackEnabled = false
+        IsMining = false
+        IsAttacking = false
+        disableNoclip()
+        
+        if MineConnection then
+            MineConnection:Disconnect()
+            MineConnection = nil
+        end
+        
+        if AttackConnection then
+            AttackConnection:Disconnect()
+            AttackConnection = nil
+        end
+    end)
+    
+    local statusBtn = createSettingsButton("📊 System Status", function()
+        local status = {
+            "=== JAWIRSCRIPT SYSTEM STATUS ===",
+            "Auto Mine: " .. (AutoMineEnabled and "ENABLED" or "DISABLED"),
+            "Auto Attack: " .. (flags.AutoAttackEnabled and "ENABLED" or "DISABLED"),
+            "Rock ESP: " .. (ESPEnabled and "ENABLED" or "DISABLED"),
+            "Mob ESP: " .. (MobESPEnabled and "ENABLED" or "DISABLED"),
+            "Noclip: " .. (NOCLIP_ENABLED and "ENABLED" or "DISABLED"),
+            "Fly Height: " .. FLY_HEIGHT .. " studs",
+            "Mining Radius: " .. MINING_SEARCH_RADIUS .. " studs",
+            "Attack Radius: " .. ATTACK_SEARCH_RADIUS .. " studs"
+        }
+        
+        print(table.concat(status, "\n"))
+    end)
+    
+    -- Tab Navigation
+    local tabButtonsFrame = Instance.new("Frame")
+    tabButtonsFrame.Size = UDim2.new(1, 0, 0, 40)
+    tabButtonsFrame.Position = UDim2.new(0, 0, 0, 40)
+    tabButtonsFrame.BackgroundTransparency = 1
+    tabButtonsFrame.Parent = mainFrame
+    
+    local tabLayout = Instance.new("UIListLayout")
+    tabLayout.FillDirection = Enum.FillDirection.Horizontal
+    tabLayout.Padding = UDim.new(0, 2)
+    tabLayout.Parent = tabButtonsFrame
+    
+    local tabNames = {"⛏️ Mine", "⚔️ Attack", "👁️ ESP", "⚒️ Forge", "⚙️ Settings"}
+    local tabColors = {
+        Color3.fromHex("#F89B29"),
+        Color3.fromHex("#FF0F7B"),
+        Color3.fromHex("#00FFAA"),
+        Color3.fromHex("#FFD700"),
+        Color3.fromHex("#888888")
     }
     
-    local TabFrame = Instance.new("Frame")
-    TabFrame.Size = UDim2.new(1, 0, 0, 40)
-    TabFrame.Position = UDim2.new(0, 0, 0, 40)
-    TabFrame.BackgroundTransparency = 1
-    TabFrame.Parent = MainFrame
-    
-    local UIListLayout = Instance.new("UIListLayout")
-    UIListLayout.FillDirection = Enum.FillDirection.Horizontal
-    UIListLayout.Parent = TabFrame
-    
-    local ContentFrame = Instance.new("ScrollingFrame")
-    ContentFrame.Size = UDim2.new(1, -10, 1, -90)
-    ContentFrame.Position = UDim2.new(0, 5, 0, 85)
-    ContentFrame.BackgroundTransparency = 1
-    ContentFrame.CanvasSize = UDim2.new(0, 0, 0, 800)
-    ContentFrame.ScrollBarThickness = 8
-    ContentFrame.Parent = MainFrame
-    
-    local ContentLayout = Instance.new("UIListLayout")
-    ContentLayout.Padding = UDim.new(0, 8)
-    ContentLayout.Parent = ContentFrame
-    
-    local function showTab(tabIndex)
-        ContentFrame:ClearAllChildren()
-        
-        if tabIndex == 1 then -- Mining
-            local buttons = {
-                {"⛏️ Toggle Auto Mine", toggleAutoMine},
-                {"🚀 Set Fly Speed", function() 
-                    FLY_SPEED = 150
-                    print("Fly Speed set to: " .. FLY_SPEED)
-                end},
-                {"📏 Set Fly Height", function() 
-                    FLY_HEIGHT = 15
-                    print("Fly Height set to: " .. FLY_HEIGHT)
-                end},
-                {"🔍 Set Search Radius", function() 
-                    MINING_SEARCH_RADIUS = 1000
-                    print("Search Radius set to: " .. MINING_SEARCH_RADIUS)
-                end}
-            }
-            
-            for _, buttonData in ipairs(buttons) do
-                local button = Instance.new("TextButton")
-                button.Size = UDim2.new(1, -10, 0, 50)
-                button.Text = buttonData[1]
-                button.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
-                button.TextColor3 = Color3.fromRGB(255, 255, 255)
-                button.Font = Enum.Font.SourceSansSemibold
-                button.TextSize = 16
-                button.Parent = ContentFrame
-                
-                local buttonCorner = Instance.new("UICorner")
-                buttonCorner.CornerRadius = UDim.new(0, 6)
-                buttonCorner.Parent = button
-                
-                button.MouseButton1Click:Connect(function()
-                    buttonData[2]()
-                end)
-            end
-            
-        elseif tabIndex == 2 then -- Attack
-            local buttons = {
-                {"⚔️ Toggle Auto Attack", toggleAutoAttack},
-                {"⚡ Set Attack Speed", function() 
-                    ATTACK_SPEED = 150
-                    print("Attack Speed set to: " .. ATTACK_SPEED)
-                end},
-                {"🎯 Set Attack Radius", function() 
-                    ATTACK_SEARCH_RADIUS = 300
-                    print("Attack Radius set to: " .. ATTACK_SEARCH_RADIUS)
-                end},
-                {"⏱️ Set Attack Delay", function() 
-                    ATTACK_DELAY = 0.3
-                    print("Attack Delay set to: " .. ATTACK_DELAY)
-                end}
-            }
-            
-            for _, buttonData in ipairs(buttons) do
-                local button = Instance.new("TextButton")
-                button.Size = UDim2.new(1, -10, 0, 50)
-                button.Text = buttonData[1]
-                button.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
-                button.TextColor3 = Color3.fromRGB(255, 255, 255)
-                button.Font = Enum.Font.SourceSansSemibold
-                button.TextSize = 16
-                button.Parent = ContentFrame
-                
-                local buttonCorner = Instance.new("UICorner")
-                buttonCorner.CornerRadius = UDim.new(0, 6)
-                buttonCorner.Parent = button
-                
-                button.MouseButton1Click:Connect(function()
-                    buttonData[2]()
-                end)
-            end
-            
-        elseif tabIndex == 3 then -- ESP
-            local buttons = {
-                {"🗿 Toggle Rock ESP", toggleRockESP},
-                {"👹 Toggle Mob ESP", toggleMobESP},
-                {"🧹 Clean ESP", cleanupESP}
-            }
-            
-            for _, buttonData in ipairs(buttons) do
-                local button = Instance.new("TextButton")
-                button.Size = UDim2.new(1, -10, 0, 50)
-                button.Text = buttonData[1]
-                button.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
-                button.TextColor3 = Color3.fromRGB(255, 255, 255)
-                button.Font = Enum.Font.SourceSansSemibold
-                button.TextSize = 16
-                button.Parent = ContentFrame
-                
-                local buttonCorner = Instance.new("UICorner")
-                buttonCorner.CornerRadius = UDim.new(0, 6)
-                buttonCorner.Parent = button
-                
-                button.MouseButton1Click:Connect(function()
-                    buttonData[2]()
-                end)
-            end
-            
-        elseif tabIndex == 4 then -- Forge
-            local buttons = {
-                {"🔨 Toggle Auto Hammer", function() 
-                    flags.AutoHammerEnabled = not flags.AutoHammerEnabled
-                    print("Auto Hammer: " .. (flags.AutoHammerEnabled and "ENABLED" or "DISABLED"))
-                end},
-                {"🔧 Activate Hooks", hookMinigameModules},
-                {"⏹️ Stop Hammer", stopAutoHammer}
-            }
-            
-            for _, buttonData in ipairs(buttons) do
-                local button = Instance.new("TextButton")
-                button.Size = UDim2.new(1, -10, 0, 50)
-                button.Text = buttonData[1]
-                button.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
-                button.TextColor3 = Color3.fromRGB(255, 255, 255)
-                button.Font = Enum.Font.SourceSansSemibold
-                button.TextSize = 16
-                button.Parent = ContentFrame
-                
-                local buttonCorner = Instance.new("UICorner")
-                buttonCorner.CornerRadius = UDim.new(0, 6)
-                buttonCorner.Parent = button
-                
-                button.MouseButton1Click:Connect(function()
-                    buttonData[2]()
-                end)
-            end
-            
-        elseif tabIndex == 5 then -- Movement
-            local buttons = {
-                {"👻 Toggle Noclip", toggleNoclip},
-                {"🚀 Set Fly Speed", function() 
-                    FLY_SPEED = 150
-                    print("Fly Speed set to: " .. FLY_SPEED)
-                end},
-                {"📏 Set Fly Height", function() 
-                    FLY_HEIGHT = 15
-                    print("Fly Height set to: " .. FLY_HEIGHT)
-                end},
-                {"⏱️ Set Mining Delay", function() 
-                    MINE_DELAY = 0.5
-                    print("Mining Delay set to: " .. MINE_DELAY)
-                end}
-            }
-            
-            for _, buttonData in ipairs(buttons) do
-                local button = Instance.new("TextButton")
-                button.Size = UDim2.new(1, -10, 0, 50)
-                button.Text = buttonData[1]
-                button.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
-                button.TextColor3 = Color3.fromRGB(255, 255, 255)
-                button.Font = Enum.Font.SourceSansSemibold
-                button.TextSize = 16
-                button.Parent = ContentFrame
-                
-                local buttonCorner = Instance.new("UICorner")
-                buttonCorner.CornerRadius = UDim.new(0, 6)
-                buttonCorner.Parent = button
-                
-                button.MouseButton1Click:Connect(function()
-                    buttonData[2]()
-                end)
-            end
-            
-        elseif tabIndex == 6 then -- Settings
-            local buttons = {
-                {"🛑 Stop All Systems", function()
-                    stopAutoHammer()
-                    AutoMineEnabled = false
-                    flags.AutoAttackEnabled = false
-                    IsMining = false
-                    IsAttacking = false
-                    disableNoclip()
-                end},
-                {"📊 System Status", function()
-                    local status = {
-                        "Auto Mine: " .. (AutoMineEnabled and "ENABLED" or "DISABLED"),
-                        "Auto Attack: " .. (flags.AutoAttackEnabled and "ENABLED" or "DISABLED"),
-                        "Rock ESP: " .. (ESPEnabled and "ENABLED" or "DISABLED"),
-                        "Mob ESP: " .. (MobESPEnabled and "ENABLED" or "DISABLED"),
-                        "Noclip: " .. (NOCLIP_ENABLED and "ENABLED" or "DISABLED")
-                    }
-                    print(table.concat(status, "\n"))
-                end}
-            }
-            
-            for _, buttonData in ipairs(buttons) do
-                local button = Instance.new("TextButton")
-                button.Size = UDim2.new(1, -10, 0, 50)
-                button.Text = buttonData[1]
-                button.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
-                button.TextColor3 = Color3.fromRGB(255, 255, 255)
-                button.Font = Enum.Font.SourceSansSemibold
-                button.TextSize = 16
-                button.Parent = ContentFrame
-                
-                local buttonCorner = Instance.new("UICorner")
-                buttonCorner.CornerRadius = UDim.new(0, 6)
-                buttonCorner.Parent = button
-                
-                button.MouseButton1Click:Connect(function()
-                    buttonData[2]()
-                end)
-            end
-        end
-    end
-    
-    -- Create tab buttons
-    for i, tabInfo in ipairs(tabs) do
-        local tabName, tabColor = tabInfo[1], tabInfo[2]
+    for i, tabName in ipairs(tabNames) do
         local tabButton = Instance.new("TextButton")
-        tabButton.Size = UDim2.new(0, 65, 1, 0)
+        tabButton.Size = UDim2.new(0.2, -2, 1, 0)
         tabButton.Text = tabName
-        tabButton.BackgroundColor3 = tabColor
         tabButton.TextColor3 = Color3.new(1, 1, 1)
         tabButton.Font = Enum.Font.SourceSansSemibold
-        tabButton.TextSize = 14
-        tabButton.Parent = TabFrame
+        tabButton.TextSize = 12
+        tabButton.BackgroundColor3 = tabColors[i]
+        tabButton.BackgroundTransparency = (i == 1) and 0 or 0.5
+        tabButton.BorderSizePixel = 0
+        tabButton.Parent = tabButtonsFrame
         
         local tabCorner = Instance.new("UICorner")
         tabCorner.CornerRadius = UDim.new(0, 4)
         tabCorner.Parent = tabButton
         
         tabButton.MouseButton1Click:Connect(function()
-            showTab(i)
-            for _, btn in pairs(tabButtons) do
-                btn.BackgroundTransparency = 0.5
+            switchToTab(i)
+            for _, btn in pairs(tabButtonsFrame:GetChildren()) do
+                if btn:IsA("TextButton") then
+                    btn.BackgroundTransparency = 0.5
+                end
             end
             tabButton.BackgroundTransparency = 0
         end)
-        
-        tabButtons[i] = tabButton
     end
     
     -- Show first tab by default
-    if #tabButtons > 0 then
-        showTab(1)
-        tabButtons[1].BackgroundTransparency = 0
+    switchToTab(1)
+    
+    -- Update tab frame sizes
+    for _, tab in ipairs(tabs) do
+        local totalHeight = 0
+        for _, btn in ipairs(tab.Buttons) do
+            totalHeight = totalHeight + btn.Size.Y.Offset + 8
+        end
+        tab.Frame.Size = UDim2.new(1, -10, 0, totalHeight + 100) -- Extra space for sliders
     end
     
-    return {
-        Open = function() MainFrame.Visible = true end,
-        Close = function() MainFrame.Visible = false end
+    -- Fungsi toggle GUI
+    local function toggleGUI()
+        guiVisible = not guiVisible
+        mainFrame.Visible = guiVisible
+        openButton.Visible = not guiVisible
+    end
+    
+    -- Event Listeners
+    openButton.MouseButton1Click:Connect(toggleGUI)
+    closeButton.MouseButton1Click:Connect(toggleGUI)
+    
+    -- Keybind untuk toggle
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if not gameProcessed and input.KeyCode == Enum.KeyCode[toggleKeybind] then
+            toggleGUI()
+        end
+    end)
+    
+    -- Simpan referensi
+    MainGUI = {
+        ScreenGui = screenGui,
+        OpenButton = openButton,
+        MainFrame = mainFrame,
+        Toggle = toggleGUI,
+        Open = function() 
+            guiVisible = true
+            mainFrame.Visible = true
+            openButton.Visible = false
+        end,
+        Close = function() 
+            guiVisible = false
+            mainFrame.Visible = false
+            openButton.Visible = true
+        end
     }
+    
+    return MainGUI
 end
 
 ----------------------------------------------------------------
@@ -1903,14 +1533,6 @@ end
 ----------------------------------------------------------------
 
 local function setupEventListeners()
-    UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if not gameProcessed and input.KeyCode == Enum.KeyCode.RightControl then
-            if MainWindow and MainWindow.Toggle then
-                MainWindow:Toggle()
-            end
-        end
-    end)
-    
     LocalPlayer.CharacterAdded:Connect(function(character)
         task.wait(1)
         if (AutoMineEnabled or IsAttacking) and NOCLIP_ENABLED then
@@ -1949,11 +1571,11 @@ end
 
 local function initializeSystem()
     print("========================================")
-    print("JAWIRSCRIPT AUTO FORGE & MINE SYSTEM v3.0")
+    print("JAWIRSCRIPT AUTO FORGE & MINE SYSTEM")
     print("========================================")
-    print("Features: Forge Skip + Auto Mine + Auto Attack + ESP")
+    print("Features: Forge Skip + Auto Mine + Auto Attack")
     print("ESP: Hanya deteksi MOB (TIDAK deteksi PLAYER)")
-    print("GUI: WindUI Modern Interface")
+    print("GUI: Simple GUI dengan OpenButton")
     print("Toggle Key: RightControl")
     print("OpenButton: Click 'Open JawirScript' button")
     print("========================================")
@@ -1964,7 +1586,7 @@ local function initializeSystem()
     
     pcall(initializeRemotes)
     
-    pcall(createWindUIGUI)
+    pcall(createSimpleGUI)
     
     pcall(setupEventListeners)
     
@@ -2001,6 +1623,11 @@ local function initializeSystem()
             if ESPConnection then
                 task.cancel(ESPConnection)
                 ESPConnection = nil
+            end
+            
+            -- Cleanup GUI
+            if MainGUI and MainGUI.ScreenGui then
+                MainGUI.ScreenGui:Destroy()
             end
         end
     end)
