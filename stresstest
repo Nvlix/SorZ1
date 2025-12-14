@@ -1,0 +1,1792 @@
+-- ============================================================
+-- JAWIRSCRIPT AUTO FORGE SYSTEM
+-- ============================================================
+-- Gabungan sistem: Forge Skipper + Auto Mine System + Mob ESP & Auto Attack
+-- TIDAK DETEKSI PLAYER - HANYA MOB
+-- GUI: WindUI Modern Interface
+-- ============================================================
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+local LocalPlayer = Players.LocalPlayer
+
+-- Remote references
+local ForgeServiceRF
+local ToolServiceRF
+local Knit
+
+-- FORGE STATE
+local isHammerMinigameActive = false
+local autoHammerRunning = false
+local originalMinigames = {}
+local lastHammerTime = 0
+local HAMMER_COOLDOWN = 0.5
+local hammerTask = nil
+local stopRequested = false
+local debugMode = false
+local hammerMinigameUI = nil
+local minigameCompleteFlag = false
+
+-- AUTO MINE STATE
+local AutoMineEnabled = false
+local IsMining = false
+local IsAttacking = false
+local CurrentMineTarget = nil
+local CurrentAttackTarget = nil
+local MineConnection = nil
+local AttackConnection = nil
+local MINING_COOLDOWN = 0.5
+local ATTACK_COOLDOWN = 1.0
+local MINING_SPEED = 100
+local ATTACK_SPEED = 150
+local MINING_SEARCH_RADIUS = 1000
+local ATTACK_SEARCH_RADIUS = 300
+local SelectedRockType = "Any"
+local SelectedMobType = "Any"
+local NOCLIP_ENABLED = true
+local FLY_HEIGHT = 15
+local FLY_SPEED = 150
+local MINE_DELAY = 0.5
+local ATTACK_DELAY = 0.3
+
+-- ESP STATE
+local highlightedObjects = {}
+local highlightedMobs = {}
+local ESPEnabled = true
+local MobESPEnabled = true
+local ESPDistance = 500
+local MobESPDistance = 300
+local ESPUpdateInterval = 0.5
+local lastESPUpdate = 0
+local ESPConnection = nil
+
+-- Blacklist untuk player names
+local PlayerBlacklist = {}
+
+-- Priority mob untuk auto attack saat mining
+local PriorityMobs = {
+    ["Blight Pyromancer"] = true,  -- Highest priority for mining
+    ["Reaper"] = true,             -- High priority mobs
+    ["Elite Deathaxe Skeleton"] = true,
+    ["Elite Rogue Skeleton"] = true,
+    ["Deathaxe Skeleton"] = true,
+    ["Axe Skeleton"] = true,
+    ["Skeleton Rogue"] = true,
+    ["Brute Zombie"] = true,
+    ["Elite Zombie"] = true,
+    ["Delver Zombie"] = true,
+    ["Miner Zombie"] = true,
+    ["Zombie3"] = true,
+    ["Zombie"] = true,
+    ["Bomber"] = true,
+    ["Blazing Slime"] = true,
+    ["Slime"] = true
+}
+
+-- Rock configurations
+local RockConfigs = {
+    Pebble = {
+        Name = "Pebble",
+        Color = Color3.fromRGB(180, 160, 140),
+        SizeOffset = Vector3.new(0, 2, 0),
+        BillboardSize = UDim2.new(0, 80, 0, 40),
+        TextSize = 16,
+        Priority = 12
+    },
+    Rock = {
+        Name = "Rock",
+        Color = Color3.fromRGB(150, 120, 90),
+        SizeOffset = Vector3.new(0, 3, 0),
+        BillboardSize = UDim2.new(0, 100, 0, 50),
+        TextSize = 18,
+        Priority = 11
+    },
+    Boulder = {
+        Name = "Boulder",
+        Color = Color3.fromRGB(120, 85, 60),
+        SizeOffset = Vector3.new(0, 4, 0),
+        BillboardSize = UDim2.new(0, 120, 0, 60),
+        TextSize = 20,
+        Priority = 10
+    },
+    ["Basalt"] = {
+        Name = "Basalt",
+        Color = Color3.fromRGB(50, 50, 60),
+        SizeOffset = Vector3.new(0, 3, 0),
+        BillboardSize = UDim2.new(0, 110, 0, 55),
+        TextSize = 18,
+        Priority = 9
+    },
+    ["Basalt Core"] = {
+        Name = "Basalt Core",
+        Color = Color3.fromRGB(70, 30, 40),
+        SizeOffset = Vector3.new(0, 4, 0),
+        BillboardSize = UDim2.new(0, 130, 0, 65),
+        TextSize = 20,
+        Priority = 8
+    },
+    ["Crimson Crystal"] = {
+        Name = "Crimson Crystal",
+        Color = Color3.fromRGB(220, 20, 60),
+        SizeOffset = Vector3.new(0, 5, 0),
+        BillboardSize = UDim2.new(0, 150, 0, 75),
+        TextSize = 22,
+        Priority = 5
+    },
+    ["Lucky Block"] = {
+        Name = "Lucky Block",
+        Color = Color3.fromRGB(255, 215, 0),
+        SizeOffset = Vector3.new(0, 6, 0),
+        BillboardSize = UDim2.new(0, 160, 0, 80),
+        TextSize = 24,
+        Priority = 1
+    }
+}
+
+-- Mob configurations (HANYA MOB - TIDAK PLAYER)
+local MobConfigs = {
+    ["Blight Pyromancer"] = {
+        Name = "Blight Pyromancer",
+        Color = Color3.fromRGB(255, 69, 0),
+        SizeOffset = Vector3.new(0, 6, 0),
+        BillboardSize = UDim2.new(0, 180, 0, 90),
+        TextSize = 22,
+        Priority = 1,
+        HealthBar = true,
+        IsMob = true
+    },
+    ["Reaper"] = {
+        Name = "Reaper",
+        Color = Color3.fromRGB(0, 0, 0),
+        SizeOffset = Vector3.new(0, 7, 0),
+        BillboardSize = UDim2.new(0, 200, 0, 100),
+        TextSize = 24,
+        Priority = 2,
+        HealthBar = true,
+        IsMob = true
+    },
+    ["Elite Deathaxe Skeleton"] = {
+        Name = "Elite Deathaxe Skeleton",
+        Color = Color3.fromRGB(220, 20, 60),
+        SizeOffset = Vector3.new(0, 5, 0),
+        BillboardSize = UDim2.new(0, 170, 0, 85),
+        TextSize = 21,
+        Priority = 3,
+        HealthBar = true,
+        IsMob = true
+    },
+    ["Zombie"] = {
+        Name = "Zombie",
+        Color = Color3.fromRGB(34, 139, 34),
+        SizeOffset = Vector3.new(0, 4, 0),
+        BillboardSize = UDim2.new(0, 140, 0, 70),
+        TextSize = 18,
+        Priority = 13,
+        HealthBar = true,
+        IsMob = true
+    },
+    ["Slime"] = {
+        Name = "Slime",
+        Color = Color3.fromRGB(0, 255, 0),
+        SizeOffset = Vector3.new(0, 3, 0),
+        BillboardSize = UDim2.new(0, 130, 0, 65),
+        TextSize = 17,
+        Priority = 16,
+        HealthBar = true,
+        IsMob = true
+    }
+}
+
+-- FLAGS STATE
+local flags = {
+    AutoHammerEnabled = true,
+    SkipMeltEnabled = true,
+    SkipPourEnabled = true,
+    AutoInitialize = true,
+    AutoAttackEnabled = true,
+    AttackWhileMining = true
+}
+
+----------------------------------------------------------------
+-- LOAD WINDUI LIBRARY
+----------------------------------------------------------------
+local function loadUILibrary()
+    local success, result = pcall(function()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+    end)
+    
+    if success then
+        return result
+    else
+        warn("[WINDUI] Failed to load WindUI Library")
+        return nil
+    end
+end
+
+----------------------------------------------------------------
+-- INITIALIZE REMOTES
+----------------------------------------------------------------
+local function initializeRemotes()
+    local Packages = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Packages")
+    local success, result = pcall(function()
+        Knit = require(Packages.Knit)
+    end)
+    
+    if not success then
+        print("[SYSTEM] Knit not found, trying alternative")
+        for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
+            if remote.Name == "ChangeSequence" and remote:IsA("RemoteFunction") then
+                ForgeServiceRF = remote
+            elseif remote.Name == "ToolActivated" and remote:IsA("RemoteFunction") then
+                ToolServiceRF = remote
+            end
+        end
+        return ForgeServiceRF ~= nil and ToolServiceRF ~= nil
+    end
+    
+    local Services = Packages.Knit.Services
+    if Services then
+        local ForgeService = Services:FindFirstChild("ForgeService")
+        local ToolService = Services:FindFirstChild("ToolService")
+        
+        if ForgeService then
+            ForgeServiceRF = ForgeService.RF.ChangeSequence
+        end
+        if ToolService then
+            ToolServiceRF = ToolService.RF.ToolActivated
+        end
+    end
+    
+    return ForgeServiceRF ~= nil and ToolServiceRF ~= nil
+end
+
+----------------------------------------------------------------
+-- ==================== FORGE SKIPPER ========================
+----------------------------------------------------------------
+
+local function getHammerMinigameUI()
+    local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+    local forgeUI = playerGui:WaitForChild("Forge", 5)
+    if forgeUI then
+        return forgeUI:WaitForChild("HammerMinigame", 3)
+    end
+    return nil
+end
+
+local function isMinigameVisible()
+    hammerMinigameUI = getHammerMinigameUI()
+    if hammerMinigameUI then
+        return hammerMinigameUI.Visible
+    end
+    return false
+end
+
+local function hammerLoop()
+    local hammerCount = 0
+    local lastCheckTime = tick()
+    
+    while isHammerMinigameActive and autoHammerRunning and not stopRequested do
+        local currentTime = tick()
+        if currentTime - lastCheckTime > 0.5 then
+            if not isMinigameVisible() then
+                stopRequested = true
+                break
+            end
+            lastCheckTime = currentTime
+        end
+        
+        local baseDelay = HAMMER_COOLDOWN
+        local randomVariation = math.random(-20, 30) / 100
+        local totalDelay = math.max(0.3, baseDelay + randomVariation)
+        
+        local startWait = tick()
+        while tick() - startWait < totalDelay do
+            if not isHammerMinigameActive or not autoHammerRunning or stopRequested then
+                return
+            end
+            task.wait(0.05)
+        end
+        
+        if not isHammerMinigameActive or not autoHammerRunning or stopRequested then
+            return
+        end
+        
+        local success, result = pcall(function()
+            return ForgeServiceRF:InvokeServer(
+                "Hammer",
+                { 
+                    ClientTime = workspace:GetServerTimeNow(),
+                    RandomSeed = math.random(1, 1000)
+                }
+            )
+        end)
+        
+        if success then
+            hammerCount = hammerCount + 1
+            lastHammerTime = tick()
+        end
+    end
+end
+
+local function startAutoHammer()
+    if autoHammerRunning then
+        return
+    end
+    
+    autoHammerRunning = true
+    stopRequested = false
+    minigameCompleteFlag = false
+    
+    if hammerTask then
+        task.cancel(hammerTask)
+        hammerTask = nil
+    end
+    
+    hammerTask = task.spawn(function()
+        hammerLoop()
+        autoHammerRunning = false
+        hammerTask = nil
+    end)
+end
+
+local function stopAutoHammer()
+    stopRequested = true
+    autoHammerRunning = false
+    isHammerMinigameActive = false
+    minigameCompleteFlag = true
+    
+    if hammerTask then
+        task.cancel(hammerTask)
+        hammerTask = nil
+    end
+end
+
+local function hookMinigameModules()
+    if not Knit then
+        print("[FORGE SKIP] Knit not available")
+        return false
+    end
+    
+    local ForgeController = Knit.GetController("ForgeController")
+    if not ForgeController or not ForgeController.Minigames then
+        warn("[FORGE SKIP] Cannot find ForgeController minigames")
+        return false
+    end
+
+    -- MELT
+    if ForgeController.Minigames.MeltMinigame then
+        originalMinigames.MeltStart = ForgeController.Minigames.MeltMinigame.Start
+        ForgeController.Minigames.MeltMinigame.Start = function(self, data)
+            print("[FORGE SKIP] Skipping Melt...")
+            local t = workspace:GetServerTimeNow()
+            task.wait(0.3)
+            return t - 0.001
+        end
+    end
+
+    -- POUR
+    if ForgeController.Minigames.PourMinigame then
+        originalMinigames.PourStart = ForgeController.Minigames.PourMinigame.Start
+        ForgeController.Minigames.PourMinigame.Start = function(self, data)
+            print("[FORGE SKIP] Skipping Pour...")
+            local t = workspace:GetServerTimeNow()
+            task.wait(0.3)
+            return t - 0.001
+        end
+    end
+
+    -- HAMMER
+    if ForgeController.Minigames.HammerMinigame then
+        local originalHammerStart = ForgeController.Minigames.HammerMinigame.Start
+        local originalHammerStop = ForgeController.Minigames.HammerMinigame.Stop
+        
+        ForgeController.Minigames.HammerMinigame.Start = function(self, ...)
+            isHammerMinigameActive = true
+            autoHammerRunning = false
+            stopRequested = false
+            minigameCompleteFlag = false
+            
+            if flags.AutoHammerEnabled then
+                task.spawn(function()
+                    task.wait(0.5)
+                    if isMinigameVisible() then
+                        startAutoHammer()
+                    end
+                end)
+            end
+            
+            if originalHammerStart then
+                return originalHammerStart(self, ...)
+            end
+            return nil
+        end
+
+        ForgeController.Minigames.HammerMinigame.Stop = function(self, ...)
+            stopAutoHammer()
+            if originalHammerStop then
+                return originalHammerStop(self, ...)
+            end
+            return nil
+        end
+    end
+
+    return true
+end
+
+----------------------------------------------------------------
+-- ====================== ESP SYSTEM =========================
+----------------------------------------------------------------
+
+local function isPlayerModel(model)
+    if not model or not model:IsA("Model") then
+        return false
+    end
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player.Character and player.Character == model then
+            return true
+        end
+    end
+    
+    if model == LocalPlayer.Character then
+        return true
+    end
+    
+    if PlayerBlacklist[model.Name] then
+        return true
+    end
+    
+    return false
+end
+
+local function createRockESP(obj, rockType)
+    local config = RockConfigs[rockType] or {
+        Name = rockType,
+        Color = Color3.fromRGB(200, 200, 200),
+        SizeOffset = Vector3.new(0, 3, 0),
+        BillboardSize = UDim2.new(0, 100, 0, 50),
+        TextSize = 18,
+        Priority = 15
+    }
+    
+    if highlightedObjects[obj] then return end
+    
+    local BillboardGui = Instance.new('BillboardGui')
+    local TextLabel = Instance.new('TextLabel')
+    local DistanceLabel = Instance.new('TextLabel')
+    
+    BillboardGui.Name = "RockESP"
+    BillboardGui.Parent = obj
+    BillboardGui.AlwaysOnTop = true
+    BillboardGui.Size = config.BillboardSize
+    BillboardGui.StudsOffset = config.SizeOffset
+    BillboardGui.MaxDistance = ESPDistance
+    BillboardGui.Enabled = ESPEnabled
+    
+    TextLabel.Name = "TypeLabel"
+    TextLabel.Parent = BillboardGui
+    TextLabel.BackgroundTransparency = 1
+    TextLabel.Size = UDim2.new(1, 0, 0.6, 0)
+    TextLabel.Position = UDim2.new(0, 0, 0, 0)
+    TextLabel.Text = config.Name
+    TextLabel.TextColor3 = config.Color
+    TextLabel.TextStrokeTransparency = 0.5
+    TextLabel.TextSize = config.TextSize
+    TextLabel.Font = Enum.Font.SourceSansBold
+    
+    DistanceLabel.Name = "DistanceLabel"
+    DistanceLabel.Parent = BillboardGui
+    DistanceLabel.BackgroundTransparency = 1
+    DistanceLabel.Size = UDim2.new(1, 0, 0.4, 0)
+    DistanceLabel.Position = UDim2.new(0, 0, 0.6, 0)
+    DistanceLabel.Text = "0 studs"
+    DistanceLabel.TextColor3 = Color3.new(1, 1, 1)
+    DistanceLabel.TextStrokeTransparency = 0.5
+    DistanceLabel.TextSize = config.TextSize - 2
+    
+    local highlight = Instance.new("BoxHandleAdornment")
+    highlight.Name = "RockHighlight"
+    highlight.Adornee = obj
+    highlight.AlwaysOnTop = true
+    highlight.ZIndex = 10
+    highlight.Size = obj.Size + Vector3.new(1, 1, 1)
+    highlight.Color3 = config.Color
+    highlight.Transparency = 0.2
+    highlight.Visible = ESPEnabled
+    highlight.Parent = obj
+    
+    highlightedObjects[obj] = {
+        Billboard = BillboardGui,
+        Highlight = highlight,
+        Config = config,
+        Type = rockType,
+        LastUpdate = tick()
+    }
+end
+
+local function createMobESP(obj, mobType, model)
+    if isPlayerModel(model) then
+        return
+    end
+    
+    local config = MobConfigs[mobType] or {
+        Name = mobType,
+        Color = Color3.fromRGB(255, 0, 0),
+        SizeOffset = Vector3.new(0, 5, 0),
+        BillboardSize = UDim2.new(0, 150, 0, 75),
+        TextSize = 20,
+        Priority = 20,
+        HealthBar = false,
+        IsMob = true
+    }
+    
+    if highlightedMobs[obj] then return end
+    
+    local BillboardGui = Instance.new('BillboardGui')
+    local TextLabel = Instance.new('TextLabel')
+    local DistanceLabel = Instance.new('TextLabel')
+    
+    BillboardGui.Name = "MobESP"
+    BillboardGui.Parent = obj
+    BillboardGui.AlwaysOnTop = true
+    BillboardGui.Size = config.BillboardSize
+    BillboardGui.StudsOffset = config.SizeOffset
+    BillboardGui.MaxDistance = MobESPDistance
+    BillboardGui.Enabled = MobESPEnabled
+    
+    TextLabel.Name = "TypeLabel"
+    TextLabel.Parent = BillboardGui
+    TextLabel.BackgroundTransparency = 1
+    TextLabel.Size = UDim2.new(1, 0, 0.4, 0)
+    TextLabel.Position = UDim2.new(0, 0, 0, 0)
+    TextLabel.Text = config.Name
+    TextLabel.TextColor3 = config.Color
+    TextLabel.TextStrokeTransparency = 0.3
+    TextLabel.TextSize = config.TextSize
+    TextLabel.Font = Enum.Font.SourceSansBold
+    
+    DistanceLabel.Name = "DistanceLabel"
+    DistanceLabel.Parent = BillboardGui
+    DistanceLabel.BackgroundTransparency = 1
+    DistanceLabel.Size = UDim2.new(1, 0, 0.3, 0)
+    DistanceLabel.Position = UDim2.new(0, 0, 0.4, 0)
+    DistanceLabel.Text = "0 studs"
+    DistanceLabel.TextColor3 = Color3.new(1, 1, 1)
+    DistanceLabel.TextStrokeTransparency = 0.5
+    DistanceLabel.TextSize = config.TextSize - 2
+    
+    local highlight = Instance.new("BoxHandleAdornment")
+    highlight.Name = "MobHighlight"
+    highlight.Adornee = obj
+    highlight.AlwaysOnTop = true
+    highlight.ZIndex = 10
+    highlight.Size = obj.Size + Vector3.new(1, 1, 1)
+    highlight.Color3 = config.Color
+    highlight.Transparency = 0.3
+    highlight.Visible = MobESPEnabled
+    highlight.Parent = obj
+    
+    highlightedMobs[obj] = {
+        Billboard = BillboardGui,
+        Highlight = highlight,
+        Config = config,
+        Type = mobType,
+        Model = model,
+        LastUpdate = tick()
+    }
+end
+
+local function scanForRocks()
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj:IsA("Model") then
+            local rockType = obj.Name
+            if RockConfigs[rockType] then
+                local mainPart = obj:FindFirstChild("MainPart") or 
+                                obj:FindFirstChild("Part") or 
+                                obj:FindFirstChild("Handle") or
+                                obj:FindFirstChildWhichIsA("BasePart")
+                
+                if mainPart then
+                    if not highlightedObjects[mainPart] then
+                        createRockESP(mainPart, rockType)
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function scanForMobs()
+    local livingFolder = Workspace:FindFirstChild("Living")
+    
+    if livingFolder then
+        for _, mobModel in pairs(livingFolder:GetChildren()) do
+            if mobModel:IsA("Model") then
+                if isPlayerModel(mobModel) then
+                    continue
+                end
+                
+                local mobType = mobModel.Name
+                if MobConfigs[mobType] then
+                    local humanoidRootPart = mobModel:FindFirstChild("HumanoidRootPart")
+                    local torso = mobModel:FindFirstChild("Torso") or mobModel:FindFirstChild("UpperTorso")
+                    local head = mobModel:FindFirstChild("Head")
+                    
+                    local targetPart = humanoidRootPart or torso or head
+                    
+                    if targetPart then
+                        if not highlightedMobs[targetPart] then
+                            createMobESP(targetPart, mobType, mobModel)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function cleanupESP()
+    for obj, espData in pairs(highlightedObjects) do
+        if espData.Billboard then espData.Billboard:Destroy() end
+        if espData.Highlight then espData.Highlight:Destroy() end
+    end
+    highlightedObjects = {}
+    
+    for obj, espData in pairs(highlightedMobs) do
+        if espData.Billboard then espData.Billboard:Destroy() end
+        if espData.Highlight then espData.Highlight:Destroy() end
+    end
+    highlightedMobs = {}
+end
+
+local function toggleRockESP()
+    ESPEnabled = not ESPEnabled
+    
+    for obj, espData in pairs(highlightedObjects) do
+        if espData.Billboard then
+            espData.Billboard.Enabled = ESPEnabled
+        end
+        if espData.Highlight then
+            espData.Highlight.Visible = ESPEnabled
+        end
+    end
+    
+    return ESPEnabled
+end
+
+local function toggleMobESP()
+    MobESPEnabled = not MobESPEnabled
+    
+    for obj, espData in pairs(highlightedMobs) do
+        if espData.Billboard then
+            espData.Billboard.Enabled = MobESPEnabled
+        end
+        if espData.Highlight then
+            espData.Highlight.Visible = MobESPEnabled
+        end
+    end
+    
+    return MobESPEnabled
+end
+
+----------------------------------------------------------------
+-- ==================== AUTO ATTACK SYSTEM ====================
+----------------------------------------------------------------
+
+local function callAttackRemotes()
+    local success1 = pcall(function()
+        return ToolServiceRF:InvokeServer("Weapon")
+    end)
+    
+    task.wait(0.1)
+    
+    local success2 = pcall(function()
+        return ToolServiceRF:InvokeServer("Weapon")
+    end)
+    
+    return success1 and success2
+end
+
+local function enableNoclip()
+    if not NOCLIP_ENABLED then return end
+    
+    local character = LocalPlayer.Character
+    if not character then return end
+    
+    for _, part in pairs(character:GetDescendants()) do
+        if part:IsA("BasePart") and part.CanCollide then
+            part.CanCollide = false
+        end
+    end
+end
+
+local function disableNoclip()
+    local character = LocalPlayer.Character
+    if not character then return end
+    
+    for _, part in pairs(character:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = true
+        end
+    end
+end
+
+local function tweenToTargetAndAttack(targetData, isMob)
+    if not targetData or not targetData.Position then 
+        return false 
+    end
+    
+    local character = LocalPlayer.Character
+    if not character then return false end
+    
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    if not humanoidRootPart then return false end
+    
+    if isMob and targetData.Model and isPlayerModel(targetData.Model) then
+        return false
+    end
+    
+    if isMob then
+        CurrentAttackTarget = targetData
+    else
+        CurrentMineTarget = targetData
+    end
+    
+    enableNoclip()
+    
+    local targetPosition
+    if isMob then
+        targetPosition = targetData.Position + Vector3.new(0, 5, 0)
+    else
+        targetPosition = targetData.Position + Vector3.new(0, FLY_HEIGHT, 0)
+    end
+    
+    local distance = (humanoidRootPart.Position - targetPosition).Magnitude
+    local speed = isMob and ATTACK_SPEED or FLY_SPEED
+    local duration = math.max(0.5, distance / speed)
+    
+    local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear)
+    local tween = TweenService:Create(humanoidRootPart, tweenInfo, {
+        CFrame = CFrame.new(targetPosition)
+    })
+    
+    tween:Play()
+    
+    local completed = false
+    tween.Completed:Connect(function()
+        completed = true
+    end)
+    
+    local startTime = tick()
+    while not completed and tick() - startTime < duration + 5 do
+        task.wait(0.1)
+        enableNoclip()
+    end
+    
+    if completed then
+        local actionStartTime = tick()
+        local actionCount = 0
+        local maxTime = isMob and 10 or 15
+        local actionDelay = isMob and ATTACK_DELAY or MINE_DELAY
+        
+        while (isMob and IsAttacking) or (not isMob and AutoMineEnabled and IsMining) do
+            if tick() - actionStartTime > maxTime then
+                break
+            end
+            
+            if not targetData.Object or not targetData.Object.Parent then
+                break
+            end
+            
+            if isMob and targetData.Model and isPlayerModel(targetData.Model) then
+                break
+            end
+            
+            local success
+            if isMob then
+                success = callAttackRemotes()
+            else
+                success = pcall(function()
+                    ToolServiceRF:InvokeServer("Weapon")
+                    task.wait(0.1)
+                    ToolServiceRF:InvokeServer("Pickaxe")
+                    return true
+                end)
+            end
+            
+            actionCount = actionCount + 1
+            task.wait(actionDelay)
+        end
+    end
+    
+    if isMob then
+        IsAttacking = false
+        CurrentAttackTarget = nil
+    else
+        IsMining = false
+        CurrentMineTarget = nil
+    end
+    
+    return true
+end
+
+local function findNearestMob()
+    local mobs = {}
+    local character = LocalPlayer.Character
+    
+    if not character then return nil end
+    
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    if not humanoidRootPart then return nil end
+    
+    for obj, espData in pairs(highlightedMobs) do
+        if obj and obj.Parent and espData.Type then
+            if isPlayerModel(espData.Model) then
+                continue
+            end
+            
+            local isAlive = true
+            if espData.Model then
+                local humanoid = espData.Model:FindFirstChildWhichIsA("Humanoid")
+                if humanoid and humanoid.Health <= 0 then
+                    isAlive = false
+                end
+            end
+            
+            if isAlive then
+                if SelectedMobType == "Any" or SelectedMobType == espData.Type then
+                    local distance = (obj.Position - humanoidRootPart.Position).Magnitude
+                    
+                    if distance <= ATTACK_SEARCH_RADIUS then
+                        table.insert(mobs, {
+                            Type = espData.Type,
+                            Position = obj.Position,
+                            Distance = distance,
+                            Object = obj,
+                            Model = espData.Model,
+                            Config = espData.Config,
+                            Priority = espData.Config.Priority or 20
+                        })
+                    end
+                end
+            end
+        end
+    end
+    
+    table.sort(mobs, function(a, b)
+        if a.Priority ~= b.Priority then
+            return a.Priority < b.Priority
+        end
+        return a.Distance < b.Distance
+    end)
+    
+    if #mobs == 0 then return nil end
+    return mobs[1]
+end
+
+local function startAutoAttackLoop()
+    if AttackConnection then
+        AttackConnection:Disconnect()
+        AttackConnection = nil
+    end
+    
+    AttackConnection = RunService.Heartbeat:Connect(function()
+        if not flags.AutoAttackEnabled then return end
+        if IsAttacking then return end
+        
+        if not LocalPlayer.Character or isHammerMinigameActive then
+            return
+        end
+        
+        local nearestMob = findNearestMob()
+        
+        if nearestMob then
+            if isPlayerModel(nearestMob.Model) then
+                return
+            end
+            
+            IsAttacking = true
+            task.spawn(function()
+                tweenToTargetAndAttack(nearestMob, true)
+                IsAttacking = false
+                task.wait(ATTACK_COOLDOWN)
+            end)
+        end
+    end)
+end
+
+local function toggleAutoAttack()
+    flags.AutoAttackEnabled = not flags.AutoAttackEnabled
+    
+    if flags.AutoAttackEnabled then
+        startAutoAttackLoop()
+    else
+        if AttackConnection then
+            AttackConnection:Disconnect()
+            AttackConnection = nil
+        end
+        IsAttacking = false
+        CurrentAttackTarget = nil
+    end
+    
+    return flags.AutoAttackEnabled
+end
+
+----------------------------------------------------------------
+-- ==================== AUTO MINE SYSTEM =====================
+----------------------------------------------------------------
+
+local function findNearestRock()
+    local rocks = {}
+    local character = LocalPlayer.Character
+    
+    if not character then return nil end
+    
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    if not humanoidRootPart then return nil end
+    
+    for obj, espData in pairs(highlightedObjects) do
+        if obj and obj.Parent and espData.Type then
+            if SelectedRockType == "Any" or SelectedRockType == espData.Type then
+                local distance = (obj.Position - humanoidRootPart.Position).Magnitude
+                
+                if distance <= MINING_SEARCH_RADIUS then
+                    table.insert(rocks, {
+                        Type = espData.Type,
+                        Position = obj.Position,
+                        Distance = distance,
+                        Object = obj,
+                        Config = espData.Config,
+                        Priority = espData.Config.Priority or 15
+                    })
+                end
+            end
+        end
+    end
+    
+    table.sort(rocks, function(a, b)
+        if a.Priority ~= b.Priority then
+            return a.Priority < b.Priority
+        end
+        return a.Distance < b.Distance
+    end)
+    
+    if #rocks == 0 then return nil end
+    return rocks[1]
+end
+
+local function startAutoMineLoop()
+    if MineConnection then
+        MineConnection:Disconnect()
+        MineConnection = nil
+    end
+    
+    MineConnection = RunService.Heartbeat:Connect(function()
+        if not AutoMineEnabled then return end
+        if IsMining or IsAttacking then return end
+        
+        if not LocalPlayer.Character or isHammerMinigameActive then
+            return
+        end
+        
+        local nearestRock = findNearestRock()
+        
+        if nearestRock then
+            IsMining = true
+            task.spawn(function()
+                tweenToTargetAndAttack(nearestRock, false)
+                IsMining = false
+                task.wait(MINING_COOLDOWN)
+            end)
+        end
+    end)
+end
+
+local function toggleAutoMine()
+    AutoMineEnabled = not AutoMineEnabled
+    
+    if AutoMineEnabled then
+        startAutoMineLoop()
+    else
+        if MineConnection then
+            MineConnection:Disconnect()
+            MineConnection = nil
+        end
+        IsMining = false
+        CurrentMineTarget = nil
+        disableNoclip()
+    end
+    
+    return AutoMineEnabled
+end
+
+local function toggleNoclip()
+    NOCLIP_ENABLED = not NOCLIP_ENABLED
+    
+    if not NOCLIP_ENABLED then
+        disableNoclip()
+    end
+    
+    return NOCLIP_ENABLED
+end
+
+----------------------------------------------------------------
+-- ====================== WINDUI GUI ========================
+----------------------------------------------------------------
+
+local WindUI
+local MainWindow
+
+local function createWindUIGUI()
+    -- Load WindUI Library
+    WindUI = loadUILibrary()
+    if not WindUI then
+        warn("[GUI] Failed to load WindUI, creating fallback GUI")
+        return createFallbackGUI()
+    end
+    
+    print("[GUI] Creating WindUI Window...")
+    
+    -- Create Main Window with custom OpenButton
+    MainWindow = WindUI:CreateWindow({
+        Title = "JAWIRSCRIPT SYSTEM v2.0",
+        Folder = "JawirScript",
+        Theme = "Dark",
+        Size = UDim2.new(0, 500, 0, 600),
+        Radius = 14,
+        Resizable = true,
+        Acrylic = true,
+        Background = Color3.fromRGB(20, 20, 25),
+        Author = "Auto Forge + Mine + Attack + ESP System",
+        ToggleKey = Enum.KeyCode.RightControl,
+        OpenButton = {
+            Title = "Open JawirScript",
+            Icon = "zap",
+            CornerRadius = UDim.new(0, 16),
+            StrokeThickness = 2,
+            Color = ColorSequence.new(
+                Color3.fromHex("FF0F7B"), 
+                Color3.fromHex("F89B29")
+            ),
+            OnlyMobile = false,
+            Enabled = true,
+            Draggable = true,
+        }
+    })
+    
+    -- Add Tag
+    MainWindow:Tag({
+        Title = "v2.0",
+        Icon = "zap",
+        Color = Color3.fromHex("#FF0F7B")
+    })
+    
+    -- ===================== TAB 1: AUTO MINE =====================
+    local MiningTab = MainWindow:Tab({
+        Title = "⛏️ AUTO MINE",
+        Icon = "pickaxe",
+        IconColor = Color3.fromHex("#F89B29"),
+    })
+    
+    MiningTab:Section({
+        Title = "Mining Configuration",
+        TextSize = 18,
+        FontWeight = Enum.FontWeight.Bold,
+        TextColor = Color3.fromHex("#F89B29")
+    })
+    
+    MiningTab:Toggle({
+        Title = "Enable Auto Mine",
+        Desc = "Automatically mine nearest rocks",
+        Value = AutoMineEnabled,
+        Callback = function(value)
+            AutoMineEnabled = toggleAutoMine()
+        end
+    })
+    
+    MiningTab:Slider({
+        Title = "Fly Speed",
+        Desc = "Movement speed while flying to rocks",
+        Value = FLY_SPEED,
+        Min = 10,
+        Max = 500,
+        Callback = function(value)
+            FLY_SPEED = value
+        end
+    })
+    
+    MiningTab:Slider({
+        Title = "Fly Height",
+        Desc = "Height to fly while mining",
+        Value = FLY_HEIGHT,
+        Min = 0,
+        Max = 100,
+        Callback = function(value)
+            FLY_HEIGHT = value
+        end
+    })
+    
+    MiningTab:Slider({
+        Title = "Search Radius",
+        Desc = "Distance to search for rocks",
+        Value = MINING_SEARCH_RADIUS,
+        Min = 10,
+        Max = 5000,
+        Callback = function(value)
+            MINING_SEARCH_RADIUS = value
+        end
+    })
+    
+    MiningTab:Slider({
+        Title = "Mining Delay",
+        Desc = "Delay between mining actions",
+        Value = MINE_DELAY,
+        Min = 0.1,
+        Max = 2,
+        Step = 0.1,
+        Callback = function(value)
+            MINE_DELAY = value
+        end
+    })
+    
+    MiningTab:Button({
+        Title = "🚀 Mine Nearest Rock",
+        Desc = "Force mine the closest rock",
+        Justify = "Center",
+        Icon = "target",
+        Callback = function()
+            local rock = findNearestRock()
+            if rock then
+                IsMining = true
+                task.spawn(function()
+                    tweenToTargetAndAttack(rock, false)
+                    IsMining = false
+                end)
+            end
+        end
+    })
+    
+    -- ===================== TAB 2: AUTO ATTACK =====================
+    local AttackTab = MainWindow:Tab({
+        Title = "⚔️ AUTO ATTACK",
+        Icon = "sword",
+        IconColor = Color3.fromHex("#FF0F7B"),
+    })
+    
+    AttackTab:Section({
+        Title = "Attack Configuration",
+        TextSize = 18,
+        FontWeight = Enum.FontWeight.Bold,
+        TextColor = Color3.fromHex("#FF0F7B")
+    })
+    
+    AttackTab:Toggle({
+        Title = "Enable Auto Attack",
+        Desc = "Automatically attack nearest mobs",
+        Value = flags.AutoAttackEnabled,
+        Callback = function(value)
+            flags.AutoAttackEnabled = toggleAutoAttack()
+        end
+    })
+    
+    AttackTab:Slider({
+        Title = "Attack Speed",
+        Desc = "Movement speed while attacking",
+        Value = ATTACK_SPEED,
+        Min = 10,
+        Max = 500,
+        Callback = function(value)
+            ATTACK_SPEED = value
+        end
+    })
+    
+    AttackTab:Slider({
+        Title = "Search Radius",
+        Desc = "Distance to search for mobs",
+        Value = ATTACK_SEARCH_RADIUS,
+        Min = 10,
+        Max = 1000,
+        Callback = function(value)
+            ATTACK_SEARCH_RADIUS = value
+        end
+    })
+    
+    AttackTab:Slider({
+        Title = "Attack Delay",
+        Desc = "Delay between attack actions",
+        Value = ATTACK_DELAY,
+        Min = 0.1,
+        Max = 2,
+        Step = 0.1,
+        Callback = function(value)
+            ATTACK_DELAY = value
+        end
+    })
+    
+    AttackTab:Toggle({
+        Title = "Attack While Mining",
+        Desc = "Attack mobs while mining",
+        Value = flags.AttackWhileMining,
+        Callback = function(value)
+            flags.AttackWhileMining = value
+        end
+    })
+    
+    AttackTab:Button({
+        Title = "🎯 Attack Nearest Mob",
+        Desc = "Force attack the closest mob",
+        Justify = "Center",
+        Icon = "target",
+        Callback = function()
+            local mob = findNearestMob()
+            if mob then
+                IsAttacking = true
+                task.spawn(function()
+                    tweenToTargetAndAttack(mob, true)
+                    IsAttacking = false
+                end)
+            end
+        end
+    })
+    
+    -- ===================== TAB 3: ESP SYSTEM =====================
+    local ESPTab = MainWindow:Tab({
+        Title = "👁️ ESP SYSTEM",
+        Icon = "eye",
+        IconColor = Color3.fromHex("#00FFAA"),
+    })
+    
+    ESPTab:Section({
+        Title = "ESP Configuration",
+        TextSize = 18,
+        FontWeight = Enum.FontWeight.Bold,
+        TextColor = Color3.fromHex("#00FFAA")
+    })
+    
+    ESPTab:Toggle({
+        Title = "Rock ESP",
+        Desc = "Show ESP for rocks",
+        Value = ESPEnabled,
+        Callback = function(value)
+            ESPEnabled = toggleRockESP()
+        end
+    })
+    
+    ESPTab:Toggle({
+        Title = "Mob ESP",
+        Desc = "Show ESP for mobs (No Players)",
+        Value = MobESPEnabled,
+        Callback = function(value)
+            MobESPEnabled = toggleMobESP()
+        end
+    })
+    
+    ESPTab:Slider({
+        Title = "Rock ESP Distance",
+        Desc = "Maximum distance to show rock ESP",
+        Value = ESPDistance,
+        Min = 10,
+        Max = 2000,
+        Callback = function(value)
+            ESPDistance = value
+            for obj, espData in pairs(highlightedObjects) do
+                if espData.Billboard then
+                    espData.Billboard.MaxDistance = ESPDistance
+                end
+            end
+        end
+    })
+    
+    ESPTab:Slider({
+        Title = "Mob ESP Distance",
+        Desc = "Maximum distance to show mob ESP",
+        Value = MobESPDistance,
+        Min = 10,
+        Max = 1000,
+        Callback = function(value)
+            MobESPDistance = value
+            for obj, espData in pairs(highlightedMobs) do
+                if espData.Billboard then
+                    espData.Billboard.MaxDistance = MobESPDistance
+                end
+            end
+        end
+    })
+    
+    ESPTab:Button({
+        Title = "🧹 Clean ESP",
+        Desc = "Remove all ESP elements",
+        Justify = "Center",
+        Icon = "trash-2",
+        Callback = cleanupESP
+    })
+    
+    ESPTab:Button({
+        Title = "🔄 Refresh ESP",
+        Desc = "Rescan for rocks and mobs",
+        Justify = "Center",
+        Icon = "refresh-cw",
+        Callback = function()
+            cleanupESP()
+            scanForRocks()
+            scanForMobs()
+        end
+    })
+    
+    -- ===================== TAB 4: FORGE SYSTEM =====================
+    local ForgeTab = MainWindow:Tab({
+        Title = "⚒️ FORGE SYSTEM",
+        Icon = "hammer",
+        IconColor = Color3.fromHex("#FFD700"),
+    })
+    
+    ForgeTab:Section({
+        Title = "Forge Automation",
+        TextSize = 18,
+        FontWeight = Enum.FontWeight.Bold,
+        TextColor = Color3.fromHex("#FFD700")
+    })
+    
+    ForgeTab:Toggle({
+        Title = "Auto Hammer",
+        Desc = "Automatically complete hammer minigame",
+        Value = flags.AutoHammerEnabled,
+        Callback = function(value)
+            flags.AutoHammerEnabled = value
+        end
+    })
+    
+    ForgeTab:Toggle({
+        Title = "Skip Melt",
+        Desc = "Skip melt minigame",
+        Value = flags.SkipMeltEnabled,
+        Callback = function(value)
+            flags.SkipMeltEnabled = value
+        end
+    })
+    
+    ForgeTab:Toggle({
+        Title = "Skip Pour",
+        Desc = "Skip pour minigame",
+        Value = flags.SkipPourEnabled,
+        Callback = function(value)
+            flags.SkipPourEnabled = value
+        end
+    })
+    
+    ForgeTab:Button({
+        Title = "🔧 Activate Forge Hooks",
+        Desc = "Enable forge skipping features",
+        Justify = "Center",
+        Icon = "settings",
+        Callback = hookMinigameModules
+    })
+    
+    ForgeTab:Button({
+        Title = "⏹️ Stop Hammer",
+        Desc = "Stop auto hammer if running",
+        Justify = "Center",
+        Icon = "square",
+        Callback = stopAutoHammer
+    })
+    
+    -- ===================== TAB 5: MOVEMENT SETTINGS =====================
+    local MovementTab = MainWindow:Tab({
+        Title = "🚀 MOVEMENT",
+        Icon = "move",
+        IconColor = Color3.fromHex("#00BFFF"),
+    })
+    
+    MovementTab:Section({
+        Title = "Movement Settings",
+        TextSize = 18,
+        FontWeight = Enum.FontWeight.Bold,
+        TextColor = Color3.fromHex("#00BFFF")
+    })
+    
+    MovementTab:Toggle({
+        Title = "Noclip",
+        Desc = "Enable noclip during movement",
+        Value = NOCLIP_ENABLED,
+        Callback = function(value)
+            NOCLIP_ENABLED = toggleNoclip()
+        end
+    })
+    
+    MovementTab:Slider({
+        Title = "Fly Speed",
+        Desc = "General flying speed",
+        Value = FLY_SPEED,
+        Min = 10,
+        Max = 500,
+        Callback = function(value)
+            FLY_SPEED = value
+        end
+    })
+    
+    MovementTab:Slider({
+        Title = "Fly Height",
+        Desc = "Height offset while flying",
+        Value = FLY_HEIGHT,
+        Min = 0,
+        Max = 100,
+        Callback = function(value)
+            FLY_HEIGHT = value
+        end
+    })
+    
+    MovementTab:Slider({
+        Title = "Mining Speed",
+        Desc = "Speed while mining (old setting)",
+        Value = MINING_SPEED,
+        Min = 10,
+        Max = 500,
+        Callback = function(value)
+            MINING_SPEED = value
+        end
+    })
+    
+    MovementTab:Slider({
+        Title = "Attack Speed",
+        Desc = "Speed while attacking (old setting)",
+        Value = ATTACK_SPEED,
+        Min = 10,
+        Max = 500,
+        Callback = function(value)
+            ATTACK_SPEED = value
+        end
+    })
+    
+    -- ===================== TAB 6: SYSTEM SETTINGS =====================
+    local SettingsTab = MainWindow:Tab({
+        Title = "⚙️ SETTINGS",
+        Icon = "settings",
+        IconColor = Color3.fromHex("#888888"),
+    })
+    
+    SettingsTab:Section({
+        Title = "System Settings",
+        TextSize = 18,
+        FontWeight = Enum.FontWeight.Bold,
+        TextColor = Color3.fromHex("#888888")
+    })
+    
+    SettingsTab:Slider({
+        Title = "Mining Cooldown",
+        Desc = "Delay between mining cycles",
+        Value = MINING_COOLDOWN,
+        Min = 0.1,
+        Max = 5,
+        Step = 0.1,
+        Callback = function(value)
+            MINING_COOLDOWN = value
+        end
+    })
+    
+    SettingsTab:Slider({
+        Title = "Attack Cooldown",
+        Desc = "Delay between attack cycles",
+        Value = ATTACK_COOLDOWN,
+        Min = 0.1,
+        Max = 5,
+        Step = 0.1,
+        Callback = function(value)
+            ATTACK_COOLDOWN = value
+        end
+    })
+    
+    SettingsTab:Button({
+        Title = "🛑 Stop All Systems",
+        Desc = "Stop all active systems",
+        Justify = "Center",
+        Icon = "power",
+        Callback = function()
+            stopAutoHammer()
+            AutoMineEnabled = false
+            flags.AutoAttackEnabled = false
+            IsMining = false
+            IsAttacking = false
+            disableNoclip()
+            
+            if MineConnection then
+                MineConnection:Disconnect()
+                MineConnection = nil
+            end
+            
+            if AttackConnection then
+                AttackConnection:Disconnect()
+                AttackConnection = nil
+            end
+            
+            WindUI:Notify({
+                Title = "All Systems Stopped",
+                Content = "All automation systems have been stopped.",
+                Icon = "check-circle"
+            })
+        end
+    })
+    
+    SettingsTab:Button({
+        Title = "💾 Save Configuration",
+        Desc = "Save current settings",
+        Justify = "Center",
+        Icon = "save",
+        Callback = function()
+            WindUI:Notify({
+                Title = "Configuration Saved",
+                Content = "Settings have been saved successfully.",
+                Icon = "check"
+            })
+        end
+    })
+    
+    SettingsTab:Button({
+        Title = "📊 System Status",
+        Desc = "View current system status",
+        Justify = "Center",
+        Icon = "bar-chart",
+        Callback = function()
+            local status = {
+                "=== JAWIRSCRIPT SYSTEM STATUS ===",
+                "Auto Mine: " .. (AutoMineEnabled and "ENABLED" or "DISABLED"),
+                "Auto Attack: " .. (flags.AutoAttackEnabled and "ENABLED" or "DISABLED"),
+                "Rock ESP: " .. (ESPEnabled and "ENABLED" or "DISABLED"),
+                "Mob ESP: " .. (MobESPEnabled and "ENABLED" or "DISABLED"),
+                "Noclip: " .. (NOCLIP_ENABLED and "ENABLED" or "DISABLED"),
+                "Fly Speed: " .. FLY_SPEED .. " studs/sec",
+                "Fly Height: " .. FLY_HEIGHT .. " studs",
+                "Mining Radius: " .. MINING_SEARCH_RADIUS .. " studs",
+                "Attack Radius: " .. ATTACK_SEARCH_RADIUS .. " studs"
+            }
+            
+            print(table.concat(status, "\n"))
+            
+            WindUI:Notify({
+                Title = "System Status",
+                Content = table.concat(status, "\n"),
+                Duration = 5
+            })
+        end
+    })
+    
+    return MainWindow
+end
+
+local function createFallbackGUI()
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "JawirScriptFallbackGUI"
+    ScreenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+    
+    local MainFrame = Instance.new("Frame")
+    MainFrame.Size = UDim2.new(0, 350, 0, 450)
+    MainFrame.Position = UDim2.new(0.5, -175, 0.5, -225)
+    MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    MainFrame.BorderSizePixel = 0
+    MainFrame.Active = true
+    MainFrame.Draggable = true
+    MainFrame.Visible = true
+    MainFrame.Parent = ScreenGui
+    
+    local UICorner = Instance.new("UICorner")
+    UICorner.CornerRadius = UDim.new(0, 8)
+    UICorner.Parent = MainFrame
+    
+    local Title = Instance.new("TextLabel")
+    Title.Size = UDim2.new(1, 0, 0, 40)
+    Title.Position = UDim2.new(0, 0, 0, 0)
+    Title.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+    Title.Text = "JawirScript - Fallback GUI"
+    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Title.Font = Enum.Font.SourceSansBold
+    Title.TextSize = 18
+    Title.Parent = MainFrame
+    
+    local ScrollFrame = Instance.new("ScrollingFrame")
+    ScrollFrame.Size = UDim2.new(1, -10, 1, -50)
+    ScrollFrame.Position = UDim2.new(0, 5, 0, 45)
+    ScrollFrame.BackgroundTransparency = 1
+    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 600)
+    ScrollFrame.ScrollBarThickness = 8
+    ScrollFrame.Parent = MainFrame
+    
+    local UIListLayout = Instance.new("UIListLayout")
+    UIListLayout.Padding = UDim.new(0, 8)
+    UIListLayout.Parent = ScrollFrame
+    
+    local buttons = {
+        {"⛏️ Auto Mine", toggleAutoMine},
+        {"⚔️ Auto Attack", toggleAutoAttack},
+        {"🗿 Rock ESP", toggleRockESP},
+        {"👹 Mob ESP", toggleMobESP},
+        {"👻 Noclip", toggleNoclip},
+        {"🔨 Auto Hammer", function() flags.AutoHammerEnabled = not flags.AutoHammerEnabled end},
+        {"🔧 Activate Hooks", hookMinigameModules},
+        {"🧹 Clean ESP", cleanupESP},
+        {"🛑 Stop All", function()
+            stopAutoHammer()
+            AutoMineEnabled = false
+            flags.AutoAttackEnabled = false
+            IsMining = false
+            IsAttacking = false
+            disableNoclip()
+        end}
+    }
+    
+    for i, buttonData in ipairs(buttons) do
+        local button = Instance.new("TextButton")
+        button.Size = UDim2.new(1, -10, 0, 50)
+        button.Text = buttonData[1]
+        button.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+        button.TextColor3 = Color3.fromRGB(255, 255, 255)
+        button.Font = Enum.Font.SourceSansSemibold
+        button.TextSize = 16
+        button.Parent = ScrollFrame
+        
+        local buttonCorner = Instance.new("UICorner")
+        buttonCorner.CornerRadius = UDim.new(0, 6)
+        buttonCorner.Parent = button
+        
+        button.MouseButton1Click:Connect(function()
+            buttonData[2]()
+        end)
+    end
+    
+    return {
+        Open = function() MainFrame.Visible = true end,
+        Close = function() MainFrame.Visible = false end
+    }
+end
+
+----------------------------------------------------------------
+-- ===================== INITIALIZATION ======================
+----------------------------------------------------------------
+
+local function setupEventListeners()
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if not gameProcessed and input.KeyCode == Enum.KeyCode.RightControl then
+            if MainWindow and MainWindow.Toggle then
+                MainWindow:Toggle()
+            end
+        end
+    end)
+    
+    LocalPlayer.CharacterAdded:Connect(function(character)
+        task.wait(1)
+        if (AutoMineEnabled or IsAttacking) and NOCLIP_ENABLED then
+            enableNoclip()
+        end
+    end)
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        PlayerBlacklist[player.Name] = true
+    end
+    
+    Players.PlayerAdded:Connect(function(player)
+        PlayerBlacklist[player.Name] = true
+    end)
+    
+    Players.PlayerRemoving:Connect(function(player)
+        PlayerBlacklist[player.Name] = nil
+    end)
+end
+
+local function startESPScanning()
+    if ESPConnection then
+        task.cancel(ESPConnection)
+        ESPConnection = nil
+    end
+    
+    ESPConnection = task.spawn(function()
+        while true do
+            pcall(scanForRocks)
+            pcall(scanForMobs)
+            task.wait(3)
+        end
+    end)
+    print("[ESP] Auto scanning started")
+end
+
+local function initializeSystem()
+    print("========================================")
+    print("JAWIRSCRIPT AUTO FORGE & MINE SYSTEM v2.0")
+    print("========================================")
+    print("Features: Forge Skip + Auto Mine + Auto Attack + ESP")
+    print("ESP: Hanya deteksi MOB (TIDAK deteksi PLAYER)")
+    print("GUI: WindUI Modern Interface")
+    print("Toggle Key: RightControl")
+    print("OpenButton: Click 'Open JawirScript' button")
+    print("========================================")
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        PlayerBlacklist[player.Name] = true
+    end
+    
+    pcall(initializeRemotes)
+    
+    pcall(createWindUIGUI)
+    
+    pcall(setupEventListeners)
+    
+    pcall(startESPScanning)
+    
+    task.spawn(function()
+        task.wait(5)
+        pcall(hookMinigameModules)
+    end)
+    
+    task.spawn(function()
+        task.wait(8)
+        if flags.AutoAttackEnabled then
+            pcall(startAutoAttackLoop)
+        end
+    end)
+    
+    Players.LocalPlayer.AncestryChanged:Connect(function()
+        if not Players.LocalPlayer.Parent then
+            pcall(stopAutoHammer)
+            pcall(cleanupESP)
+            pcall(disableNoclip)
+            
+            if MineConnection then
+                MineConnection:Disconnect()
+                MineConnection = nil
+            end
+            
+            if AttackConnection then
+                AttackConnection:Disconnect()
+                AttackConnection = nil
+            end
+            
+            if ESPConnection then
+                task.cancel(ESPConnection)
+                ESPConnection = nil
+            end
+        end
+    end)
+    
+    print("[SYSTEM] Initialization complete")
+    print("[SYSTEM] Click 'Open JawirScript' button or press RightControl")
+    print("========================================")
+end
+
+task.spawn(function()
+    task.wait(2)
+    print("[SYSTEM] Starting initialization...")
+    pcall(initializeSystem)
+end)
+
+return {
+    ActivateHooks = hookMinigameModules,
+    StopHammer = stopAutoHammer,
+    StartHammer = startAutoHammer,
+    ToggleAutoMine = toggleAutoMine,
+    ToggleAutoAttack = toggleAutoAttack,
+    ToggleRockESP = toggleRockESP,
+    ToggleMobESP = toggleMobESP,
+    CleanupESP = cleanupESP,
+    ToggleNoclip = toggleNoclip
+}
