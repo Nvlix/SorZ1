@@ -1,5 +1,5 @@
 -- ============================================================
--- JAWIRSCRIPT - The Forge
+-- JAWIRSCRIPT - The Forge 1.1
 -- ============================================================
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
