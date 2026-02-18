@@ -1,0 +1,897 @@
+-- =============================================
+-- CRAFT A WORLD OP GUI v9.1 - FIXED AUTOCLICKER
+-- Minimizable, Better Layout, Professional Design
+-- =============================================
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+local mouse = player:GetMouse()
+
+local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+local PlayerFist = Remotes:WaitForChild("PlayerFist")
+local PlayerPlaceItem = Remotes:WaitForChild("PlayerPlaceItem")
+
+-- Variables
+local fistDelay = 0.03
+local placeDelay = 0.12
+local targetX = 75
+local targetY = 38
+local blockID = 1
+local autoFarm = false
+local noclipEnabled = false
+local disableTilesEnabled = false
+local noFistVisual = false
+local hookActive = true
+local lastCaptureTime = 0
+local isMinimized = false
+
+-- Autoclicker variables
+local autoClickerEnabled = false
+local autoClickerArea = nil
+local autoClickerInterval = 1.0
+local selectingArea = false
+local selectionStart = nil
+local selectionEnd = nil
+local selectionConnection = nil
+
+local TILE_SIZE = 4.5
+local OFFSET_X = 0
+local OFFSET_Y = 4.5
+
+-- State
+local State = {
+    captureLabel = nil,
+    slotBox = nil,
+    xBox = nil,
+    yBox = nil,
+    targetLbl = nil,
+    blockIDLbl = nil,
+    mainContent = nil,
+    minimizeBtn = nil,
+    autoClickerStatusLbl = nil,
+    autoClickerAreaLbl = nil,
+}
+
+local character = player.Character or player.CharacterAdded:Wait()
+player.CharacterAdded:Connect(function(newChar)
+    character = newChar
+end)
+
+-- =============================================
+-- HOOK
+-- =============================================
+
+local mt = getrawmetatable(game)
+local oldNamecall = mt.__namecall
+setreadonly(mt, false)
+
+mt.__namecall = function(self, ...)
+    local method = getnamecallmethod()
+
+    if hookActive
+    and method == "FireServer"
+    and self.Name == "PlayerPlaceItem"
+    and self.Parent == Remotes
+    then
+        local a1, a2 = ...
+
+        if typeof(a1) == "Vector2" then
+            targetX = a1.X
+            targetY = a1.Y
+        end
+
+        if type(a2) == "number" then
+            blockID = a2
+        end
+
+        lastCaptureTime = tick()
+
+        print(string.format(
+            "🎯 [HOOK] Captured! Pos=(%d, %d) | Slot/BlockID=%d",
+            targetX, targetY, blockID
+        ))
+
+        if State.captureLabel then
+            State.captureLabel.Text = string.format(
+                "✅ Pos: (%d, %d) | Slot: %d",
+                targetX, targetY, blockID
+            )
+            State.captureLabel.TextColor3 = Color3.fromRGB(76, 255, 108)
+        end
+        if State.xBox then State.xBox.Text = tostring(targetX) end
+        if State.yBox then State.yBox.Text = tostring(targetY) end
+        if State.slotBox then State.slotBox.Text = tostring(blockID) end
+        if State.targetLbl then
+            State.targetLbl.Text = "(" .. targetX .. ", " .. targetY .. ")"
+        end
+    end
+
+    return oldNamecall(self, ...)
+end
+
+setreadonly(mt, true)
+print("✅ Hook v9.1 ready!")
+
+-- =============================================
+-- GUI MAIN
+-- =============================================
+
+local sg = Instance.new("ScreenGui")
+sg.Name = "CraftOPv91"
+sg.ResetOnSpawn = false
+sg.Parent = playerGui
+
+local mainFrame = Instance.new("Frame", sg)
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 420, 0, 600)
+mainFrame.Position = UDim2.new(0.5, -210, 0.5, -300)
+mainFrame.BackgroundColor3 = Color3.fromRGB(20, 22, 28)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+
+-- Header
+local header = Instance.new("Frame", mainFrame)
+header.Name = "Header"
+header.Size = UDim2.new(1, 0, 0, 45)
+header.BackgroundColor3 = Color3.fromRGB(25, 28, 35)
+header.BorderSizePixel = 0
+
+local titleText = Instance.new("TextLabel", header)
+titleText.Size = UDim2.new(1, -100, 1, 0)
+titleText.BackgroundTransparency = 1
+titleText.Text = "⚡ Craft World Optimizer"
+titleText.TextColor3 = Color3.fromRGB(76, 255, 108)
+titleText.Font = Enum.Font.GothamBold
+titleText.TextSize = 16
+titleText.TextXAlignment = Enum.TextXAlignment.Left
+titleText.Position = UDim2.new(0, 15, 0, 0)
+
+-- Minimize Button
+local minimizeBtn = Instance.new("TextButton", header)
+minimizeBtn.Name = "MinimizeBtn"
+minimizeBtn.Size = UDim2.new(0, 35, 0, 35)
+minimizeBtn.Position = UDim2.new(1, -75, 0.5, -17)
+minimizeBtn.BackgroundColor3 = Color3.fromRGB(40, 45, 55)
+minimizeBtn.BackgroundTransparency = 0
+minimizeBtn.BorderSizePixel = 0
+minimizeBtn.Text = "−"
+minimizeBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
+minimizeBtn.Font = Enum.Font.GothamBold
+minimizeBtn.TextSize = 22
+
+minimizeBtn.MouseEnter:Connect(function()
+    minimizeBtn.BackgroundColor3 = Color3.fromRGB(60, 70, 85)
+    minimizeBtn.TextColor3 = Color3.fromRGB(76, 255, 108)
+end)
+
+minimizeBtn.MouseLeave:Connect(function()
+    minimizeBtn.BackgroundColor3 = Color3.fromRGB(40, 45, 55)
+    minimizeBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
+end)
+
+State.minimizeBtn = minimizeBtn
+
+-- Close Button
+local closeBtn = Instance.new("TextButton", header)
+closeBtn.Name = "CloseBtn"
+closeBtn.Size = UDim2.new(0, 35, 0, 35)
+closeBtn.Position = UDim2.new(1, -35, 0.5, -17)
+closeBtn.BackgroundColor3 = Color3.fromRGB(40, 45, 55)
+closeBtn.BorderSizePixel = 0
+closeBtn.Text = "✕"
+closeBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 16
+
+closeBtn.MouseEnter:Connect(function()
+    closeBtn.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
+    closeBtn.TextColor3 = Color3.new(1)
+end)
+
+closeBtn.MouseLeave:Connect(function()
+    closeBtn.BackgroundColor3 = Color3.fromRGB(40, 45, 55)
+    closeBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
+end)
+
+-- Main Content
+local mainContent = Instance.new("ScrollingFrame", mainFrame)
+mainContent.Name = "MainContent"
+mainContent.Size = UDim2.new(1, 0, 1, -45)
+mainContent.Position = UDim2.new(0, 0, 0, 45)
+mainContent.BackgroundColor3 = Color3.fromRGB(20, 22, 28)
+mainContent.BorderSizePixel = 0
+mainContent.ScrollBarThickness = 4
+mainContent.ScrollBarImageColor3 = Color3.fromRGB(76, 255, 108)
+mainContent.CanvasSize = UDim2.new(0, 0, 0, 1050)
+
+State.mainContent = mainContent
+
+-- =============================================
+-- SECTION 1: AUTO CAPTURE
+-- =============================================
+
+local captureSection = Instance.new("Frame", mainContent)
+captureSection.Name = "CaptureSection"
+captureSection.Size = UDim2.new(1, -20, 0, 120)
+captureSection.Position = UDim2.new(0, 10, 0, 10)
+captureSection.BackgroundColor3 = Color3.fromRGB(25, 35, 30)
+captureSection.BorderSizePixel = 1
+captureSection.BorderColor3 = Color3.fromRGB(76, 255, 108)
+
+local capHeader = Instance.new("TextLabel", captureSection)
+capHeader.Size = UDim2.new(1, 0, 0, 28)
+capHeader.BackgroundColor3 = Color3.fromRGB(20, 30, 25)
+capHeader.BorderSizePixel = 0
+capHeader.Text = "🎯  AUTO CAPTURE"
+capHeader.TextColor3 = Color3.fromRGB(76, 255, 108)
+capHeader.Font = Enum.Font.GothamBold
+capHeader.TextSize = 13
+capHeader.TextXAlignment = Enum.TextXAlignment.Left
+capHeader.Position = UDim2.new(0, 12, 0, 0)
+
+local capLabel = Instance.new("TextLabel", captureSection)
+capLabel.Size = UDim2.new(1, -20, 0, 25)
+capLabel.Position = UDim2.new(0, 10, 0, 32)
+capLabel.BackgroundTransparency = 1
+capLabel.Text = "⏳ Waiting for block placement..."
+capLabel.TextColor3 = Color3.fromRGB(180, 180, 150)
+capLabel.Font = Enum.Font.Gotham
+capLabel.TextSize = 12
+capLabel.TextXAlignment = Enum.TextXAlignment.Left
+State.captureLabel = capLabel
+
+local hookToggle = Instance.new("TextButton", captureSection)
+hookToggle.Size = UDim2.new(0, 90, 0, 28)
+hookToggle.Position = UDim2.new(0, 10, 0, 62)
+hookToggle.BackgroundColor3 = Color3.fromRGB(76, 255, 108)
+hookToggle.BorderSizePixel = 0
+hookToggle.Text = "HOOK: ON"
+hookToggle.TextColor3 = Color3.fromRGB(20, 22, 28)
+hookToggle.Font = Enum.Font.GothamBold
+hookToggle.TextSize = 12
+
+hookToggle.MouseButton1Click:Connect(function()
+    hookActive = not hookActive
+    hookToggle.Text = "HOOK: " .. (hookActive and "ON" or "OFF")
+    hookToggle.BackgroundColor3 = hookActive
+        and Color3.fromRGB(76, 255, 108)
+        or Color3.fromRGB(180, 100, 100)
+end)
+
+-- =============================================
+-- SECTION 2: COORDINATES
+-- =============================================
+
+local coordSection = Instance.new("Frame", mainContent)
+coordSection.Size = UDim2.new(1, -20, 0, 130)
+coordSection.Position = UDim2.new(0, 10, 0, 145)
+coordSection.BackgroundColor3 = Color3.fromRGB(25, 28, 35)
+coordSection.BorderSizePixel = 1
+coordSection.BorderColor3 = Color3.fromRGB(60, 70, 85)
+
+local coordHeader = Instance.new("TextLabel", coordSection)
+coordHeader.Size = UDim2.new(1, 0, 0, 28)
+coordHeader.BackgroundColor3 = Color3.fromRGB(20, 23, 30)
+coordHeader.BorderSizePixel = 0
+coordHeader.Text = "📍 TARGET COORDINATES"
+coordHeader.TextColor3 = Color3.fromRGB(150, 180, 255)
+coordHeader.Font = Enum.Font.GothamBold
+coordHeader.TextSize = 13
+coordHeader.TextXAlignment = Enum.TextXAlignment.Left
+coordHeader.Position = UDim2.new(0, 12, 0, 0)
+
+local targetDisplay = Instance.new("TextLabel", coordSection)
+targetDisplay.Size = UDim2.new(1, -20, 0, 25)
+targetDisplay.Position = UDim2.new(0, 10, 0, 32)
+targetDisplay.BackgroundTransparency = 1
+targetDisplay.Text = "Current Target: (75, 38)"
+targetDisplay.TextColor3 = Color3.fromRGB(150, 180, 255)
+targetDisplay.Font = Enum.Font.GothamBold
+targetDisplay.TextSize = 12
+State.targetLbl = targetDisplay
+
+local function createInputField(parent, label, defaultVal, posY)
+    local container = Instance.new("Frame", parent)
+    container.Size = UDim2.new(0.45, 0, 0, 30)
+    container.Position = UDim2.new(0, 10, 0, posY)
+    container.BackgroundTransparency = 1
+
+    local lbl = Instance.new("TextLabel", container)
+    lbl.Size = UDim2.new(0, 25, 1, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = label
+    lbl.TextColor3 = Color3.fromRGB(150, 150, 150)
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 12
+
+    local input = Instance.new("TextBox", container)
+    input.Size = UDim2.new(1, -30, 1, 0)
+    input.Position = UDim2.new(0, 30, 0, 0)
+    input.BackgroundColor3 = Color3.fromRGB(35, 40, 50)
+    input.BorderSizePixel = 0
+    input.Text = tostring(defaultVal)
+    input.TextColor3 = Color3.fromRGB(200, 200, 200)
+    input.Font = Enum.Font.Gotham
+    input.TextSize = 12
+    input.ClearTextOnFocus = false
+
+    return input
+end
+
+local xInput = createInputField(coordSection, "X", targetX, 62)
+local yInput = createInputField(coordSection, "Y", targetY, 62)
+yInput.Parent.Position = UDim2.new(0.5, 5, 0, 62)
+
+State.xBox = xInput
+State.yBox = yInput
+
+local applyCoordBtn = Instance.new("TextButton", coordSection)
+applyCoordBtn.Size = UDim2.new(1, -20, 0, 28)
+applyCoordBtn.Position = UDim2.new(0, 10, 0, 98)
+applyCoordBtn.BackgroundColor3 = Color3.fromRGB(150, 180, 255)
+applyCoordBtn.BorderSizePixel = 0
+applyCoordBtn.Text = "APPLY COORDINATES"
+applyCoordBtn.TextColor3 = Color3.fromRGB(20, 22, 28)
+applyCoordBtn.Font = Enum.Font.GothamBold
+applyCoordBtn.TextSize = 12
+
+applyCoordBtn.MouseButton1Click:Connect(function()
+    local nx, ny = tonumber(xInput.Text), tonumber(yInput.Text)
+    if nx and ny then
+        targetX, targetY = nx, ny
+        targetDisplay.Text = "Current Target: (" .. nx .. ", " .. ny .. ")"
+    end
+end)
+
+-- =============================================
+-- SECTION 3: BLOCK & FARM HERE
+-- =============================================
+
+local blockSection = Instance.new("Frame", mainContent)
+blockSection.Size = UDim2.new(1, -20, 0, 100)
+blockSection.Position = UDim2.new(0, 10, 0, 290)
+blockSection.BackgroundColor3 = Color3.fromRGB(25, 28, 35)
+blockSection.BorderSizePixel = 1
+blockSection.BorderColor3 = Color3.fromRGB(60, 70, 85)
+
+local blockHeader = Instance.new("TextLabel", blockSection)
+blockHeader.Size = UDim2.new(1, 0, 0, 28)
+blockHeader.BackgroundColor3 = Color3.fromRGB(20, 23, 30)
+blockHeader.BorderSizePixel = 0
+blockHeader.Text = "📦 BLOCK & LOCATION"
+blockHeader.TextColor3 = Color3.fromRGB(255, 200, 100)
+blockHeader.Font = Enum.Font.GothamBold
+blockHeader.TextSize = 13
+blockHeader.TextXAlignment = Enum.TextXAlignment.Left
+blockHeader.Position = UDim2.new(0, 12, 0, 0)
+
+local blockIDDisplay = Instance.new("TextLabel", blockSection)
+blockIDDisplay.Size = UDim2.new(1, -20, 0, 20)
+blockIDDisplay.Position = UDim2.new(0, 10, 0, 32)
+blockIDDisplay.BackgroundTransparency = 1
+blockIDDisplay.Text = "Block ID: 1"
+blockIDDisplay.TextColor3 = Color3.fromRGB(255, 200, 100)
+blockIDDisplay.Font = Enum.Font.GothamBold
+blockIDDisplay.TextSize = 12
+State.blockIDLbl = blockIDDisplay
+
+local slotInput = Instance.new("TextBox", blockSection)
+slotInput.Size = UDim2.new(0.48, 0, 0, 28)
+slotInput.Position = UDim2.new(0, 10, 0, 56)
+slotInput.BackgroundColor3 = Color3.fromRGB(35, 40, 50)
+slotInput.BorderSizePixel = 0
+slotInput.Text = tostring(blockID)
+slotInput.PlaceholderText = "Slot ID"
+slotInput.PlaceholderColor3 = Color3.fromRGB(100, 100, 100)
+slotInput.TextColor3 = Color3.fromRGB(200, 200, 200)
+slotInput.Font = Enum.Font.Gotham
+slotInput.TextSize = 12
+State.slotBox = slotInput
+
+local setSlotBtn = Instance.new("TextButton", blockSection)
+setSlotBtn.Size = UDim2.new(0.48, 0, 0, 28)
+setSlotBtn.Position = UDim2.new(0.52, 0, 0, 56)
+setSlotBtn.BackgroundColor3 = Color3.fromRGB(100, 180, 100)
+setSlotBtn.BorderSizePixel = 0
+setSlotBtn.Text = "SET SLOT"
+setSlotBtn.TextColor3 = Color3.fromRGB(20, 22, 28)
+setSlotBtn.Font = Enum.Font.GothamBold
+setSlotBtn.TextSize = 12
+
+local farmHereBtn = Instance.new("TextButton", blockSection)
+farmHereBtn.Size = UDim2.new(1, -20, 0, 28)
+farmHereBtn.Position = UDim2.new(0, 10, 0, 64)
+farmHereBtn.BackgroundColor3 = Color3.fromRGB(255, 180, 80)
+farmHereBtn.BorderSizePixel = 0
+farmHereBtn.Text = "🔄 FARM HERE (Current Position)"
+farmHereBtn.TextColor3 = Color3.fromRGB(20, 22, 28)
+farmHereBtn.Font = Enum.Font.GothamBold
+farmHereBtn.TextSize = 11
+
+setSlotBtn.MouseButton1Click:Connect(function()
+    local n = tonumber(slotInput.Text)
+    if n then
+        blockID = n
+        blockIDDisplay.Text = "Block ID: " .. n
+    end
+end)
+
+farmHereBtn.MouseButton1Click:Connect(function()
+    local char = player.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        local pos = char.HumanoidRootPart.Position
+        local gX = math.floor((pos.X + OFFSET_X) / TILE_SIZE)
+        local gY = math.floor((pos.Y + OFFSET_Y) / TILE_SIZE)
+        targetX, targetY = gX, gY
+        xInput.Text, yInput.Text = tostring(gX), tostring(gY)
+        targetDisplay.Text = "Current Target: (" .. gX .. ", " .. gY .. ") [PLAYER POS]"
+    end
+end)
+
+-- =============================================
+-- SECTION 4: FEATURES
+-- =============================================
+
+local featureSection = Instance.new("Frame", mainContent)
+featureSection.Size = UDim2.new(1, -20, 0, 160)
+featureSection.Position = UDim2.new(0, 10, 0, 405)
+featureSection.BackgroundColor3 = Color3.fromRGB(25, 28, 35)
+featureSection.BorderSizePixel = 1
+featureSection.BorderColor3 = Color3.fromRGB(60, 70, 85)
+
+local featureHeader = Instance.new("TextLabel", featureSection)
+featureHeader.Size = UDim2.new(1, 0, 0, 28)
+featureHeader.BackgroundColor3 = Color3.fromRGB(20, 23, 30)
+featureHeader.BorderSizePixel = 0
+featureHeader.Text = "⚙️ FEATURES"
+featureHeader.TextColor3 = Color3.fromRGB(200, 150, 255)
+featureHeader.Font = Enum.Font.GothamBold
+featureHeader.TextSize = 13
+featureHeader.TextXAlignment = Enum.TextXAlignment.Left
+featureHeader.Position = UDim2.new(0, 12, 0, 0)
+
+local function createToggleBtn(parent, text, x, y, r, g, b)
+    local btn = Instance.new("TextButton", parent)
+    btn.Size = UDim2.new(0.48, 0, 0, 32)
+    btn.Position = UDim2.new(x, 0, 0, y)
+    btn.BackgroundColor3 = Color3.fromRGB(r, g, b)
+    btn.BorderSizePixel = 0
+    btn.Text = text
+    btn.TextColor3 = Color3.fromRGB(20, 22, 28)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 11
+    return btn
+end
+
+local farmToggle = createToggleBtn(featureSection, "START FARM (OFF)", 0, 32, 100, 160, 100)
+local noclipToggle = createToggleBtn(featureSection, "NOCLIP (OFF)", 0.52, 32, 180, 120, 80)
+local tilesToggle = createToggleBtn(featureSection, "DISABLE TILES (OFF)", 0, 70, 120, 140, 100)
+local fistToggle = createToggleBtn(featureSection, "NO FIST VIS (OFF)", 0.52, 70, 150, 120, 200)
+
+local statusLabel = Instance.new("TextLabel", featureSection)
+statusLabel.Size = UDim2.new(1, -20, 0, 20)
+statusLabel.Position = UDim2.new(0, 10, 0, 108)
+statusLabel.BackgroundTransparency = 1
+statusLabel.Text = "Status: All OFF"
+statusLabel.TextColor3 = Color3.fromRGB(150, 100, 100)
+statusLabel.Font = Enum.Font.Gotham
+statusLabel.TextSize = 11
+
+-- =============================================
+-- SECTION 5: AUTOCLICKER
+-- =============================================
+
+local autoClickerSection = Instance.new("Frame", mainContent)
+autoClickerSection.Size = UDim2.new(1, -20, 0, 150)
+autoClickerSection.Position = UDim2.new(0, 10, 0, 580)
+autoClickerSection.BackgroundColor3 = Color3.fromRGB(35, 25, 30)
+autoClickerSection.BorderSizePixel = 1
+autoClickerSection.BorderColor3 = Color3.fromRGB(255, 150, 200)
+
+local autoClickerHeader = Instance.new("TextLabel", autoClickerSection)
+autoClickerHeader.Size = UDim2.new(1, 0, 0, 28)
+autoClickerHeader.BackgroundColor3 = Color3.fromRGB(30, 20, 25)
+autoClickerHeader.BorderSizePixel = 0
+autoClickerHeader.Text = "🖱️  AUTOCLICKER"
+autoClickerHeader.TextColor3 = Color3.fromRGB(255, 150, 200)
+autoClickerHeader.Font = Enum.Font.GothamBold
+autoClickerHeader.TextSize = 13
+autoClickerHeader.TextXAlignment = Enum.TextXAlignment.Left
+autoClickerHeader.Position = UDim2.new(0, 12, 0, 0)
+
+local autoClickerInfoLbl = Instance.new("TextLabel", autoClickerSection)
+autoClickerInfoLbl.Size = UDim2.new(1, -20, 0, 16)
+autoClickerInfoLbl.Position = UDim2.new(0, 10, 0, 30)
+autoClickerInfoLbl.BackgroundTransparency = 1
+autoClickerInfoLbl.Text = "Click area selection tombol, lalu click 2x di layar"
+autoClickerInfoLbl.TextColor3 = Color3.fromRGB(200, 150, 150)
+autoClickerInfoLbl.Font = Enum.Font.Gotham
+autoClickerInfoLbl.TextSize = 10
+autoClickerInfoLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+local autoClickerAreaLbl = Instance.new("TextLabel", autoClickerSection)
+autoClickerAreaLbl.Size = UDim2.new(1, -20, 0, 16)
+autoClickerAreaLbl.Position = UDim2.new(0, 10, 0, 48)
+autoClickerAreaLbl.BackgroundTransparency = 1
+autoClickerAreaLbl.Text = "Area: Not Selected"
+autoClickerAreaLbl.TextColor3 = Color3.fromRGB(255, 150, 150)
+autoClickerAreaLbl.Font = Enum.Font.GothamBold
+autoClickerAreaLbl.TextSize = 10
+autoClickerAreaLbl.TextXAlignment = Enum.TextXAlignment.Left
+State.autoClickerAreaLbl = autoClickerAreaLbl
+
+-- Interval input
+local intervalContainer = Instance.new("Frame", autoClickerSection)
+intervalContainer.Size = UDim2.new(0.45, 0, 0, 28)
+intervalContainer.Position = UDim2.new(0, 10, 0, 68)
+intervalContainer.BackgroundTransparency = 1
+
+local intervalLbl = Instance.new("TextLabel", intervalContainer)
+intervalLbl.Size = UDim2.new(0, 50, 1, 0)
+intervalLbl.BackgroundTransparency = 1
+intervalLbl.Text = "Interval:"
+intervalLbl.TextColor3 = Color3.fromRGB(150, 150, 150)
+intervalLbl.Font = Enum.Font.GothamBold
+intervalLbl.TextSize = 10
+
+local intervalInput = Instance.new("TextBox", intervalContainer)
+intervalInput.Size = UDim2.new(1, -55, 1, 0)
+intervalInput.Position = UDim2.new(0, 55, 0, 0)
+intervalInput.BackgroundColor3 = Color3.fromRGB(35, 40, 50)
+intervalInput.BorderSizePixel = 0
+intervalInput.Text = "1.0"
+intervalInput.PlaceholderText = "sec"
+intervalInput.PlaceholderColor3 = Color3.fromRGB(100, 100, 100)
+intervalInput.TextColor3 = Color3.fromRGB(200, 200, 200)
+intervalInput.Font = Enum.Font.Gotham
+intervalInput.TextSize = 10
+intervalInput.ClearTextOnFocus = false
+
+intervalInput.FocusLost:Connect(function()
+    local val = tonumber(intervalInput.Text)
+    if val and val > 0 then
+        autoClickerInterval = val
+    else
+        intervalInput.Text = tostring(autoClickerInterval)
+    end
+end)
+
+-- Select Area Button
+local selectAreaBtn = Instance.new("TextButton", autoClickerSection)
+selectAreaBtn.Size = UDim2.new(0.48, 0, 0, 28)
+selectAreaBtn.Position = UDim2.new(0.52, 0, 0, 68)
+selectAreaBtn.BackgroundColor3 = Color3.fromRGB(100, 200, 255)
+selectAreaBtn.BorderSizePixel = 0
+selectAreaBtn.Text = "SELECT AREA"
+selectAreaBtn.TextColor3 = Color3.fromRGB(20, 22, 28)
+selectAreaBtn.Font = Enum.Font.GothamBold
+selectAreaBtn.TextSize = 10
+
+-- Toggle button
+local autoClickerToggle = Instance.new("TextButton", autoClickerSection)
+autoClickerToggle.Size = UDim2.new(1, -20, 0, 28)
+autoClickerToggle.Position = UDim2.new(0, 10, 0, 100)
+autoClickerToggle.BackgroundColor3 = Color3.fromRGB(150, 100, 100)
+autoClickerToggle.BorderSizePixel = 0
+autoClickerToggle.Text = "AUTOCLICKER (OFF)"
+autoClickerToggle.TextColor3 = Color3.fromRGB(20, 22, 28)
+autoClickerToggle.Font = Enum.Font.GothamBold
+autoClickerToggle.TextSize = 11
+
+State.autoClickerStatusLbl = autoClickerToggle
+
+-- =============================================
+-- AUTOCLICKER LOGIC
+-- =============================================
+
+selectAreaBtn.MouseButton1Click:Connect(function()
+    selectingArea = not selectingArea
+    selectAreaBtn.BackgroundColor3 = selectingArea
+        and Color3.fromRGB(200, 100, 255)
+        or Color3.fromRGB(100, 200, 255)
+    selectAreaBtn.Text = selectingArea and "SELECTING..." or "SELECT AREA"
+    
+    print("[AUTOCLICKER] Selection mode: " .. tostring(selectingArea))
+    
+    if selectingArea then
+        local clickCount = 0
+        
+        -- Disconnect previous connection jika ada
+        if selectionConnection then
+            selectionConnection:Disconnect()
+        end
+        
+        selectionConnection = mouse.Button1Down:Connect(function()
+            if not selectingArea then return end
+            
+            clickCount = clickCount + 1
+            local pos = Vector2.new(mouse.X, mouse.Y)
+            
+            print("[AUTOCLICKER] Click #" .. clickCount .. " at X=" .. math.floor(pos.X) .. " Y=" .. math.floor(pos.Y))
+            
+            if clickCount == 1 then
+                selectionStart = pos
+                autoClickerAreaLbl.Text = "✓ Pos 1: " .. math.floor(pos.X) .. ", " .. math.floor(pos.Y)
+                autoClickerAreaLbl.TextColor3 = Color3.fromRGB(255, 200, 100)
+            elseif clickCount == 2 then
+                selectionEnd = pos
+                
+                -- Normalize coordinates
+                autoClickerArea = {
+                    x1 = math.min(selectionStart.X, selectionEnd.X),
+                    y1 = math.min(selectionStart.Y, selectionEnd.Y),
+                    x2 = math.max(selectionStart.X, selectionEnd.X),
+                    y2 = math.max(selectionStart.Y, selectionEnd.Y),
+                }
+                
+                local width = math.floor(autoClickerArea.x2 - autoClickerArea.x1)
+                local height = math.floor(autoClickerArea.y2 - autoClickerArea.y1)
+                
+                autoClickerAreaLbl.Text = "✓ Area: " .. width .. "x" .. height .. " px"
+                autoClickerAreaLbl.TextColor3 = Color3.fromRGB(100, 255, 150)
+                
+                selectingArea = false
+                selectAreaBtn.BackgroundColor3 = Color3.fromRGB(100, 200, 255)
+                selectAreaBtn.Text = "SELECT AREA"
+                clickCount = 0
+                
+                if selectionConnection then
+                    selectionConnection:Disconnect()
+                    selectionConnection = nil
+                end
+                
+                print("[AUTOCLICKER] Area selected! Ready to use")
+            end
+        end)
+    else
+        if selectionConnection then
+            selectionConnection:Disconnect()
+            selectionConnection = nil
+        end
+    end
+end)
+
+autoClickerToggle.MouseButton1Click:Connect(function()
+    if not autoClickerArea then
+        autoClickerAreaLbl.Text = "❌ SELECT AREA dulu!"
+        autoClickerAreaLbl.TextColor3 = Color3.fromRGB(255, 100, 100)
+        return
+    end
+    
+    autoClickerEnabled = not autoClickerEnabled
+    autoClickerToggle.Text = "AUTOCLICKER (" .. (autoClickerEnabled and "ON" or "OFF") .. ")"
+    autoClickerToggle.BackgroundColor3 = autoClickerEnabled
+        and Color3.fromRGB(100, 200, 100)
+        or Color3.fromRGB(150, 100, 100)
+    
+    if autoClickerEnabled then
+        task.spawn(function()
+            while autoClickerEnabled and autoClickerArea do
+                local randX = math.random(math.floor(autoClickerArea.x1), math.floor(autoClickerArea.x2))
+                local randY = math.random(math.floor(autoClickerArea.y1), math.floor(autoClickerArea.y2))
+                
+                -- Simulate click
+                mouse.X = randX
+                mouse.Y = randY
+                game:GetService("UserInputService"):SendMouseButtonEvent(randX, randY, 0, true)
+                task.wait(0.05)
+                game:GetService("UserInputService"):SendMouseButtonEvent(randX, randY, 0, false)
+                
+                task.wait(autoClickerInterval)
+            end
+        end)
+    end
+end)
+
+-- =============================================
+-- FARM LOGIC
+-- =============================================
+
+local farmThread
+local function updateStatus()
+    statusLabel.Text = string.format("Farm: %s | Noclip: %s | Tiles: %s | Fist: %s",
+        (autoFarm and "✓" or "✗"),
+        (noclipEnabled and "✓" or "✗"),
+        (disableTilesEnabled and "✓" or "✗"),
+        (noFistVisual and "✓" or "✗")
+    )
+    statusLabel.TextColor3 = (autoFarm or noclipEnabled or disableTilesEnabled or noFistVisual)
+        and Color3.fromRGB(100, 255, 100)
+        or Color3.fromRGB(150, 100, 100)
+end
+
+farmToggle.MouseButton1Click:Connect(function()
+    autoFarm = not autoFarm
+    farmToggle.Text = "START FARM (" .. (autoFarm and "ON" or "OFF") .. ")"
+    farmToggle.BackgroundColor3 = autoFarm
+        and Color3.fromRGB(150, 200, 100)
+        or Color3.fromRGB(100, 160, 100)
+    
+    if autoFarm then
+        farmThread = task.spawn(function()
+            while autoFarm do
+                PlayerFist:FireServer(Vector2.new(targetX, targetY))
+                task.wait(fistDelay)
+                PlayerPlaceItem:FireServer(Vector2.new(targetX, targetY), blockID)
+                task.wait(placeDelay)
+            end
+        end)
+    end
+    updateStatus()
+end)
+
+-- Noclip
+local noclipConn
+local function applyNoclip(state)
+    noclipEnabled = state
+    noclipToggle.Text = "NOCLIP (" .. (state and "ON" or "OFF") .. ")"
+    noclipToggle.BackgroundColor3 = state
+        and Color3.fromRGB(220, 150, 80)
+        or Color3.fromRGB(180, 120, 80)
+    
+    if state then
+        noclipConn = RunService.Stepped:Connect(function()
+            if character then
+                for _, p in pairs(character:GetDescendants()) do
+                    if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then
+                        p.CanCollide = false
+                        p.AssemblyLinearVelocity = Vector3.new()
+                        p.AssemblyAngularVelocity = Vector3.new()
+                    end
+                end
+            end
+        end)
+    else
+        if noclipConn then noclipConn:Disconnect() noclipConn = nil end
+    end
+    updateStatus()
+end
+
+noclipToggle.MouseButton1Click:Connect(function()
+    applyNoclip(not noclipEnabled)
+end)
+
+-- Tiles
+local tilesConn
+tilesToggle.MouseButton1Click:Connect(function()
+    disableTilesEnabled = not disableTilesEnabled
+    tilesToggle.Text = "DISABLE TILES (" .. (disableTilesEnabled and "ON" or "OFF") .. ")"
+    tilesToggle.BackgroundColor3 = disableTilesEnabled
+        and Color3.fromRGB(160, 180, 100)
+        or Color3.fromRGB(120, 140, 100)
+    
+    if disableTilesEnabled then
+        tilesConn = RunService.Heartbeat:Connect(function()
+            if character and character:FindFirstChild("HumanoidRootPart") then
+                local root = character.HumanoidRootPart.Position
+                for _, obj in pairs(Workspace.Tiles:GetDescendants()) do
+                    if obj:IsA("BasePart") and (obj.Position - root).Magnitude < 60 then
+                        obj.CanCollide = false
+                    end
+                end
+            end
+        end)
+    else
+        if tilesConn then tilesConn:Disconnect() tilesConn = nil end
+    end
+    updateStatus()
+end)
+
+-- Fist
+local fistConn
+fistToggle.MouseButton1Click:Connect(function()
+    noFistVisual = not noFistVisual
+    fistToggle.Text = "NO FIST VIS (" .. (noFistVisual and "ON" or "OFF") .. ")"
+    fistToggle.BackgroundColor3 = noFistVisual
+        and Color3.fromRGB(200, 150, 255)
+        or Color3.fromRGB(150, 120, 200)
+    
+    if noFistVisual then
+        fistConn = RunService.Heartbeat:Connect(function()
+            local effects = Workspace:FindFirstChild("Effects")
+            if effects then
+                for _, child in pairs(effects:GetChildren()) do
+                    if child.Name:find(player.Name .. "_Fist") then
+                        child:Destroy()
+                    end
+                end
+            end
+        end)
+    else
+        if fistConn then fistConn:Disconnect() fistConn = nil end
+    end
+    updateStatus()
+end)
+
+-- =============================================
+-- MINIMIZE / MAXIMIZE
+-- =============================================
+
+local function toggleMinimize()
+    isMinimized = not isMinimized
+    
+    if isMinimized then
+        mainContent:TweenSize(
+            UDim2.new(1, 0, 0, 0),
+            Enum.EasingDirection.InOut,
+            Enum.EasingStyle.Quad,
+            0.3,
+            true
+        )
+        minimizeBtn.Text = "▲"
+        mainFrame:TweenSize(
+            UDim2.new(0, 420, 0, 45),
+            Enum.EasingDirection.InOut,
+            Enum.EasingStyle.Quad,
+            0.3,
+            true
+        )
+    else
+        mainContent:TweenSize(
+            UDim2.new(1, 0, 1, -45),
+            Enum.EasingDirection.InOut,
+            Enum.EasingStyle.Quad,
+            0.3,
+            true
+        )
+        minimizeBtn.Text = "−"
+        mainFrame:TweenSize(
+            UDim2.new(0, 420, 0, 600),
+            Enum.EasingDirection.InOut,
+            Enum.EasingStyle.Quad,
+            0.3,
+            true
+        )
+    end
+end
+
+minimizeBtn.MouseButton1Click:Connect(toggleMinimize)
+
+-- =============================================
+-- HOTKEY & CLEANUP
+-- =============================================
+
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.F then
+        applyNoclip(not noclipEnabled)
+    end
+end)
+
+closeBtn.MouseButton1Click:Connect(function()
+    autoFarm = false
+    autoClickerEnabled = false
+    hookActive = false
+    if selectionConnection then selectionConnection:Disconnect() end
+    local mt2 = getrawmetatable(game)
+    setreadonly(mt2, false)
+    mt2.__namecall = oldNamecall
+    setreadonly(mt2, true)
+    sg:Destroy()
+end)
+
+RunService.Heartbeat:Connect(function()
+    blockIDDisplay.Text = "Block ID: " .. blockID
+end)
+
+player.CharacterAdded:Connect(function(newChar)
+    character = newChar
+    task.wait(1)
+    if noclipEnabled then applyNoclip(false) applyNoclip(true) end
+end)
+
+updateStatus()
+print("✅ Craft World GUI v9.1 loaded!")
+print("📌 Features:")
+print("   • Auto-capture coordinates & block ID")
+print("   • Minimizable UI")
+print("   • Farm, Noclip, Disable Tiles, No Fist Visual")
+print("   • Autoclicker dengan area selection (FIXED)")
+print("   • Press F untuk toggle Noclip")
