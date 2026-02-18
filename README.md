@@ -3,3 +3,4 @@
 ## Supported Game
 - The Forge
 - Fish it
+- Growtopia Roblox
